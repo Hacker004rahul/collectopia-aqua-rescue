@@ -5,17 +5,16 @@
  *
  * KEY GEOMETRY FACTS
  * ──────────────────
- * Road width:          8.1 m   (±4.05 m from centre)
- * Sidewalk outer edge: 7.36 m  from centre
- * Building front face: 11.2 m  from centre  (FRONT_X in StreetChunkBuilder)
+ * River edge:          8.8 m   (±8.8 m from centre)
+ * Grassy bank outer edge: 14.5 m from centre
+ * Riverside house fronts begin beyond the bank.
  *
- * HIGHWAY BILLBOARD DESIGN
+ * RIVERSIDE BILLBOARD DESIGN
  * ─────────────────────────────────────────
- * The gantry pillars are planted outside the road edge and the roadside posts
- * sit beyond the sidewalk. Large artwork faces the player with an inward lean.
+ * All ad structures sit on the grassy banks beyond the water edge. Artwork is
+ * raised and turned toward the river channel.
  *
- * A printed 12.4 × 5.3 m roadside face is the visual focus; slim steel posts
- * and rear rails support it without competing with the artwork.
+ * Large branded faces remain readable from the boat without standing in water.
  *
  * LOGO ASPECT RATIO
  * ─────────────────
@@ -25,8 +24,7 @@
  *
  * SIDE PLACEMENTS
  * ───────────────
- * Smaller signs remain in the roadside verge. Large hoardings sit farther
- * outside the road edge to keep the enlarged face clear of traffic.
+ * Panel footprints stay inside the bank, including when angled toward the river.
  */
 import * as THREE from 'three';
 import {
@@ -46,10 +44,12 @@ export type AdFormatId =
 
 // ─── scene geometry constants ─────────────────────────────────────────────────
 const LOGO_RATIO      = 640 / 271;      // 2.3616
-const BUILDING_FACE_X = 11.2;           // building front face from centre
-const PILLAR_X        = 5.2;
-const VERGE_X         = 7.95;
-const HOARDING_X      = 9.2;  // close to building face, visible from road
+const BUILDING_FACE_X = 11.2;
+const RIVER_EDGE_X    = 8.8;
+const BANK_OUTER_X    = 14.5;
+const PILLAR_X        = 2.5;
+const VERGE_X         = 10.7;
+const HOARDING_X      = 11.2;
 
 // ─── material helpers ─────────────────────────────────────────────────────────
 
@@ -64,12 +64,12 @@ function std(
   });
 }
 
-function logoBillboardMat(panelW: number, panelH: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
+function logoBillboardMat(panelW: number, panelH: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
     map: makeLogoBillboardTexture(panelW, panelH),
     color: 0xffffff,
-    roughness: 0.78,
-    metalness: 0.06,
+    toneMapped: false,
+    side: THREE.DoubleSide,
   });
 }
 
@@ -122,17 +122,15 @@ function buildGantry(): THREE.Group {
   const steelDk = std(0x28292e, 0.60, 0.50);
   const footing = std(0x8a8680, 0.92);
 
-  // Realistic overhead gantry bridge
-  // Two vertical pillars at ±PILLAR_X, a horizontal I-beam on top,
-  // panel hangs below the beam on drop rods.
-  const pillarH  = 7.8;
+  // Freestanding bank-side frame; it no longer spans or rests in the river.
+  const pillarH  = 8.6;
   const beamY    = pillarH;          // beam sits at pillar top
   const beamSpan = PILLAR_X * 2 + 0.6;
 
   // Panel: sized to logo ratio, slightly smaller for realism
-  const panelW   = 6.0;
-  const panelH   = panelW * (271 / 640); // ~2.54 m
-  const panelY   = beamY - 0.6 - panelH / 2; // hangs below beam
+  const panelW   = 4.2;
+  const panelH   = panelW * (271 / 640); // ~1.78 m
+  const panelY   = beamY - 0.25 - panelH / 2;
 
   // Pillars with X-cross bracing (two diagonal boxes per side)
   for (const side of [-1, 1] as const) {
@@ -160,7 +158,7 @@ function buildGantry(): THREE.Group {
   g.add(box(beamSpan, 0.14, 0.44, 0, beamY - 0.62, 0, steelDk)); // bottom flange
 
   // Vertical drop rods from beam bottom to panel top
-  const rodTop    = beamY - 0.70;
+  const rodTop    = beamY - 0.30;
   const rodBottom = panelY + panelH / 2;
   const rodH      = rodTop - rodBottom;
   for (const rx of [-panelW * 0.38, -panelW * 0.13, panelW * 0.13, panelW * 0.38]) {
@@ -187,7 +185,7 @@ function buildGantry(): THREE.Group {
 }
 
 // Hoarding panel: sized to logo's native 640:271 ratio so logo fills perfectly
-const HOARDING_PANEL_W = 3.6;
+const HOARDING_PANEL_W = 4.4;
 const HOARDING_PANEL_H = HOARDING_PANEL_W * (271 / 640); // ~1.52 m
 
 function buildHoarding(): THREE.Group {
@@ -197,7 +195,7 @@ function buildHoarding(): THREE.Group {
   const footing = std(0x99958d, 0.92);
 
   // Single centre post, panel sits at eye level
-  const postH  = 3.4;
+  const postH  = 4.0;
   const panelY = postH + HOARDING_PANEL_H / 2;
 
   // Single thick post centred
@@ -227,7 +225,7 @@ function buildBuildingBoard(): THREE.Group {
 
   const panelH = 1.52;
   const panelW = panelH * LOGO_RATIO;  // 3.59 m
-  const mountH = 4.2;
+  const mountH = 4.8;
 
   // independent steel posts and footings (the board no longer floats)
   const bMat = std(0x2a2e2c, 0.70, 0.32);
@@ -269,7 +267,7 @@ function buildShopfrontBoard(): THREE.Group {
 
   const panelH = 1.0;
   const panelW = panelH * LOGO_RATIO;  // 2.362 m
-  const mountH = 2.8;
+  const mountH = 3.5;
 
   // independent posts and footings
   const postMat = std(0x242826, 0.72, 0.28);
@@ -310,7 +308,7 @@ function buildPremiumInstall(): THREE.Group {
   const capMat    = std(0x1e2028, 0.36, 0.44);
 
   const totemW = 1.4;
-  const totemH = 5.0;
+  const totemH = 5.4;
   const panelH = totemH * 0.42;         // 2.1 m
   const panelW = panelH * LOGO_RATIO;   // 4.96 m — NB: wider than totem; fits on face
 
@@ -350,19 +348,20 @@ export function buildAdStructure(format: AdFormatId, _side: -1 | 1): THREE.Group
 }
 
 /**
- * Lateral X offset from road centre for each format.
- * Gantry: 0 (centred; pylons at ±PILLAR_X which is inside building face).
- * Large hoardings use an increased offset so their wider face clears traffic.
+ * Lateral X offset from river centre for each format.
+ * Even the widest angled panel remains within the grassy banks.
  */
 export const AD_SIDE_OFFSET: Record<AdFormatId, number> = {
-  'gantry':          0,
+  'gantry':          11.5,
   'hoarding':        HOARDING_X,
-  'building-board':  VERGE_X - 0.5,
-  'shopfront-board': VERGE_X - 0.5,
-  'premium-install': VERGE_X - 0.5,
+  'building-board':  VERGE_X,
+  'shopfront-board': VERGE_X,
+  'premium-install': VERGE_X,
 };
 
 export const AD_BUILDING_FACE_X    = BUILDING_FACE_X;
+export const AD_RIVER_EDGE_X      = RIVER_EDGE_X;
+export const AD_BANK_OUTER_X      = BANK_OUTER_X;
 export const AD_SIDEWALK_OUTER_X   = 7.36;
 export const AD_PLAYER_FACING_LEAN = 0.5;
 export const AD_HOARDING_PANEL_WIDTH  = HOARDING_PANEL_W;

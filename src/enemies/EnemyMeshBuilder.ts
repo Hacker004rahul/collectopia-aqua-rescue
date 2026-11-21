@@ -1,349 +1,509 @@
-/**
- * EnemyMeshBuilder
- *
- * Builds procedural low-poly 3D models for each enemy type.
- * All enemies are visually distinct from background pedestrians, props and
- * obstacles.  They share a common upright humanoid silhouette but differ in
- * colour, scale, build and distinguishing features so the player can read their
- * type at a glance.
- *
- * Enemy types
- *  basic  – orange kurta, lean build, standard size
- *  fast   – yellow track-suit, slim, slightly shorter
- *  guard  – dark uniform, broad, helmet-style cap
- *  heavy  – red shirt, stocky and tall, large head
- *  boss   – black and gold, largest, crown ornament
- *
- * No GLB assets are used; all geometry is Three.js primitives.
- */
 import * as THREE from 'three';
 
 export type EnemyKind = 'basic' | 'fast' | 'guard' | 'heavy' | 'boss';
+export type CrocodileState =
+  | 'spawning'
+  | 'swimming'
+  | 'approaching'
+  | 'chasing'
+  | 'attacking'
+  | 'stunned'
+  | 'frozen'
+  | 'despawning';
 
-// ─── shared material helpers ─────────────────────────────────────────────────
-
-function mat(
-  color: number,
-  roughness = 0.82,
-  emissive = 0,
-  emissiveIntensity = 0,
-): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness: 0,
-    flatShading: true,
-    emissive,
-    emissiveIntensity,
-  });
+interface CrocodileAnimation {
+  body: THREE.Group;
+  jaw: THREE.Group;
+  legs: THREE.Group[];
+  tailSegments: THREE.Group[];
+  ripple: THREE.Mesh;
+  frozenAura: THREE.Mesh;
+  phase: number;
 }
 
-// ─── geometry helpers ────────────────────────────────────────────────────────
-
-function box(
-  w: number,
-  h: number,
-  d: number,
-  x: number,
-  y: number,
-  z: number,
-  material: THREE.MeshStandardMaterial,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  return mesh;
-}
-
-function sphere(
-  r: number,
-  x: number,
-  y: number,
-  z: number,
-  material: THREE.MeshStandardMaterial,
-  wSeg = 10,
-  hSeg = 10,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, wSeg, hSeg), material);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  return mesh;
-}
-
-function capsule(
-  r: number,
-  len: number,
-  x: number,
-  y: number,
-  z: number,
-  material: THREE.MeshStandardMaterial,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 8), material);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  return mesh;
-}
-
-// ─── builders ────────────────────────────────────────────────────────────────
-
-function buildBasic(): THREE.Group {
-  const g = new THREE.Group();
-  const skin  = mat(0xd4906a, 0.78);
-  const shirt = mat(0xe07820, 0.82);  // orange kurta
-  const pants = mat(0x2b3a52, 0.88);
-  const shoe  = mat(0x1a1a1a, 0.95);
-  const hair  = mat(0x1a1a20, 0.9);
-
-  // legs
-  g.add(box(0.19, 0.58, 0.18, -0.14, 0.29, 0, pants));
-  g.add(box(0.19, 0.58, 0.18,  0.14, 0.29, 0, pants));
-  // feet
-  g.add(box(0.21, 0.1, 0.32, -0.14, 0.05, -0.07, shoe));
-  g.add(box(0.21, 0.1, 0.32,  0.14, 0.05, -0.07, shoe));
-  // torso
-  g.add(capsule(0.26, 0.38, 0, 1.18, 0, shirt));
-  // arms
-  g.add(box(0.14, 0.52, 0.14, -0.44, 1.14, 0, shirt));
-  g.add(box(0.14, 0.52, 0.14,  0.44, 1.14, 0, shirt));
-  // hands
-  g.add(sphere(0.09, -0.44, 0.84, 0, skin));
-  g.add(sphere(0.09,  0.44, 0.84, 0, skin));
-  // neck + head
-  g.add(sphere(0.1, 0, 1.56, 0, skin));
-  g.add(sphere(0.26, 0, 1.88, 0, skin, 10, 10));
-  // hair
-  g.add(sphere(0.265, 0, 1.92, 0, hair, 10, 8));
-  // eyes (simple dark spots)
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x101018 });
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
-  eyeL.position.set(-0.1, 1.9, -0.24);
-  g.add(eyeL);
-  const eyeR = eyeL.clone();
-  eyeR.position.set(0.1, 1.9, -0.24);
-  g.add(eyeR);
-
-  return g;
-}
-
-function buildFast(): THREE.Group {
-  const g = new THREE.Group();
-  const skin    = mat(0xc8846a, 0.78);
-  const suit    = mat(0xd9b820, 0.75);  // yellow tracksuit
-  const stripe  = mat(0xffffff, 0.9);
-  const shoe    = mat(0x222222, 0.95);
-  const hair    = mat(0x0d0d14, 0.9);
-
-  // slim build — slightly shorter (scale applied to group)
-  g.scale.set(0.9, 0.92, 0.9);
-
-  g.add(box(0.17, 0.56, 0.17, -0.13, 0.28, 0, suit));
-  g.add(box(0.17, 0.56, 0.17,  0.13, 0.28, 0, suit));
-  // side stripe on pants
-  g.add(box(0.04, 0.56, 0.04, -0.22, 0.28, 0, stripe));
-  g.add(box(0.04, 0.56, 0.04,  0.22, 0.28, 0, stripe));
-  g.add(box(0.21, 0.1, 0.3, -0.13, 0.05, -0.07, shoe));
-  g.add(box(0.21, 0.1, 0.3,  0.13, 0.05, -0.07, shoe));
-  g.add(capsule(0.24, 0.36, 0, 1.16, 0, suit));
-  // side stripe on jacket
-  g.add(box(0.04, 0.44, 0.04, -0.26, 1.16, 0, stripe));
-  g.add(box(0.04, 0.44, 0.04,  0.26, 1.16, 0, stripe));
-  g.add(box(0.13, 0.5, 0.13, -0.4, 1.12, 0, suit));
-  g.add(box(0.13, 0.5, 0.13,  0.4, 1.12, 0, suit));
-  g.add(sphere(0.085, -0.4, 0.82, 0, skin));
-  g.add(sphere(0.085,  0.4, 0.82, 0, skin));
-  g.add(sphere(0.09, 0, 1.54, 0, skin));
-  g.add(sphere(0.24, 0, 1.84, 0, skin, 10, 10));
-  g.add(sphere(0.245, 0, 1.88, 0, hair, 10, 8));
-
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x101018 });
-  [-0.09, 0.09].forEach((ex) => {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.038, 6, 6), eyeMat);
-    e.position.set(ex, 1.86, -0.23);
-    g.add(e);
-  });
-
-  return g;
-}
-
-function buildGuard(): THREE.Group {
-  const g = new THREE.Group();
-  const skin    = mat(0xb87050, 0.78);
-  const uniform = mat(0x1e2d4a, 0.85);  // dark navy uniform
-  const belt    = mat(0x2a2010, 0.92);
-  const shoe    = mat(0x0a0a0a, 0.95);
-  const helmet  = mat(0x2b3a30, 0.76, 0x112218, 0.08);  // dark-green helmet
-
-  // broader torso
-  g.add(box(0.22, 0.6, 0.2, -0.16, 0.3, 0, uniform));
-  g.add(box(0.22, 0.6, 0.2,  0.16, 0.3, 0, uniform));
-  g.add(box(0.24, 0.1, 0.34, -0.16, 0.05, -0.08, shoe));
-  g.add(box(0.24, 0.1, 0.34,  0.16, 0.05, -0.08, shoe));
-  g.add(capsule(0.3, 0.44, 0, 1.22, 0, uniform));
-  // belt
-  g.add(box(0.72, 0.1, 0.36, 0, 0.9, 0, belt));
-  g.add(box(0.14, 0.14, 0.14, 0, 0.9, -0.19, belt));
-  // arms
-  g.add(box(0.16, 0.54, 0.16, -0.5, 1.18, 0, uniform));
-  g.add(box(0.16, 0.54, 0.16,  0.5, 1.18, 0, uniform));
-  g.add(sphere(0.1, -0.5, 0.86, 0, skin));
-  g.add(sphere(0.1,  0.5, 0.86, 0, skin));
-  g.add(sphere(0.1, 0, 1.6, 0, skin));
-  g.add(sphere(0.28, 0, 1.94, 0, skin, 10, 10));
-  // helmet
-  const hMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6),
-    helmet,
-  );
-  hMesh.position.set(0, 2.0, 0.02);
-  hMesh.castShadow = true;
-  g.add(hMesh);
-  // helmet brim
-  g.add(box(0.72, 0.06, 0.1, 0, 1.78, -0.16, helmet));
-
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0a0a14 });
-  [-0.11, 0.11].forEach((ex) => {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.042, 6, 6), eyeMat);
-    e.position.set(ex, 1.95, -0.26);
-    g.add(e);
-  });
-
-  return g;
-}
-
-function buildHeavy(): THREE.Group {
-  const g = new THREE.Group();
-  const skin    = mat(0xc07850, 0.78);
-  const shirt   = mat(0xc42020, 0.82);  // red shirt
-  const pants   = mat(0x1a1a2a, 0.88);
-  const shoe    = mat(0x0d0d0d, 0.95);
-  const hair    = mat(0x0d0d0d, 0.9);
-  const beard   = mat(0x1a1414, 0.88);
-
-  // stocky and tall — 1.1x scale
-  g.scale.set(1.1, 1.08, 1.1);
-
-  g.add(box(0.26, 0.64, 0.24, -0.18, 0.32, 0, pants));
-  g.add(box(0.26, 0.64, 0.24,  0.18, 0.32, 0, pants));
-  g.add(box(0.28, 0.12, 0.38, -0.18, 0.06, -0.09, shoe));
-  g.add(box(0.28, 0.12, 0.38,  0.18, 0.06, -0.09, shoe));
-  // wide torso
-  g.add(capsule(0.34, 0.5, 0, 1.28, 0, shirt));
-  g.add(box(0.18, 0.56, 0.18, -0.56, 1.22, 0, shirt));
-  g.add(box(0.18, 0.56, 0.18,  0.56, 1.22, 0, shirt));
-  g.add(sphere(0.12, -0.56, 0.9, 0, skin));
-  g.add(sphere(0.12,  0.56, 0.9, 0, skin));
-  // large head
-  g.add(sphere(0.12, 0, 1.68, 0, skin));
-  g.add(sphere(0.34, 0, 2.08, 0, skin, 10, 10));
-  g.add(sphere(0.345, 0, 2.12, 0, hair, 10, 8));
-  // beard
-  g.add(box(0.42, 0.22, 0.14, 0, 1.9, -0.3, beard));
-
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0a0a14 });
-  [-0.14, 0.14].forEach((ex) => {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), eyeMat);
-    e.position.set(ex, 2.1, -0.32);
-    g.add(e);
-  });
-
-  // health indicator band (orange stripe on shirt)
-  g.add(box(0.78, 0.06, 0.74, 0, 1.46, 0, mat(0xf07820, 0.7, 0xf07820, 0.22)));
-
-  return g;
-}
-
-function buildBoss(): THREE.Group {
-  const g = new THREE.Group();
-  const skin   = mat(0xb06840, 0.76);
-  const jacket = mat(0x0d0d14, 0.72, 0x1a1a30, 0.1);  // black jacket
-  const gold   = mat(0xd4a820, 0.52, 0xd4a820, 0.28);  // gold trim
-  const pants  = mat(0x0a0a0a, 0.88);
-  const boot   = mat(0x1a0a00, 0.82);
-  const hair   = mat(0x060608, 0.9);
-
-  // tallest and widest
-  g.scale.set(1.18, 1.14, 1.18);
-
-  g.add(box(0.28, 0.68, 0.26, -0.2, 0.34, 0, pants));
-  g.add(box(0.28, 0.68, 0.26,  0.2, 0.34, 0, pants));
-  g.add(box(0.3, 0.14, 0.42, -0.2, 0.07, -0.1, boot));
-  g.add(box(0.3, 0.14, 0.42,  0.2, 0.07, -0.1, boot));
-  // gold boot trim
-  g.add(box(0.32, 0.06, 0.44, -0.2, 0.2, -0.1, gold));
-  g.add(box(0.32, 0.06, 0.44,  0.2, 0.2, -0.1, gold));
-  // jacket
-  g.add(capsule(0.36, 0.56, 0, 1.36, 0, jacket));
-  // gold lapels
-  g.add(box(0.1, 0.6, 0.06, -0.18, 1.36, -0.33, gold));
-  g.add(box(0.1, 0.6, 0.06,  0.18, 1.36, -0.33, gold));
-  // arms
-  g.add(box(0.19, 0.6, 0.19, -0.6, 1.3, 0, jacket));
-  g.add(box(0.19, 0.6, 0.19,  0.6, 1.3, 0, jacket));
-  // gold cuffs
-  g.add(box(0.22, 0.08, 0.22, -0.6, 0.98, 0, gold));
-  g.add(box(0.22, 0.08, 0.22,  0.6, 0.98, 0, gold));
-  g.add(sphere(0.13, -0.6, 0.94, 0, skin));
-  g.add(sphere(0.13,  0.6, 0.94, 0, skin));
-  g.add(sphere(0.14, 0, 1.78, 0, skin));
-  g.add(sphere(0.38, 0, 2.2, 0, skin, 12, 12));
-  g.add(sphere(0.385, 0, 2.24, 0, hair, 12, 10));
-  // crown / turban ornament
-  g.add(box(0.72, 0.14, 0.72, 0, 2.52, 0, gold));
-  g.add(box(0.52, 0.22, 0.52, 0, 2.66, 0, gold));
-  g.add(box(0.3, 0.3, 0.3, 0, 2.82, 0, gold));
-  // jewel on crown
-  g.add(sphere(0.1, 0, 2.98, 0, mat(0xa00040, 0.4, 0xa00040, 0.5)));
-
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x060008 });
-  [-0.16, 0.16].forEach((ex) => {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat);
-    e.position.set(ex, 2.22, -0.36);
-    g.add(e);
-  });
-
-  // health bar backing (dark strip behind boss head)
-  g.add(box(0.84, 0.1, 0.06, 0, 2.62, -0.42, mat(0x1a1a1a, 1.0)));
-  // health bar fill — starts full, narrowed programmatically via scale.x
-  const hpFill = new THREE.Mesh(
-    new THREE.BoxGeometry(0.76, 0.06, 0.04),
-    mat(0x22cc44, 0.6, 0x22cc44, 0.4),
-  );
-  hpFill.position.set(0, 2.62, -0.46);
-  hpFill.name = 'bossHpFill';
-  hpFill.castShadow = false;
-  g.add(hpFill);
-
-  return g;
-}
-
-// ─── public API ───────────────────────────────────────────────────────────────
-
-const BUILDERS: Record<EnemyKind, () => THREE.Group> = {
-  basic: buildBasic,
-  fast:  buildFast,
-  guard: buildGuard,
-  heavy: buildHeavy,
-  boss:  buildBoss,
+const ENEMY_STYLE: Record<EnemyKind, { scale: number; color: number }> = {
+  basic: { scale: 0.96, color: 0x557c3a },
+  fast: { scale: 0.88, color: 0x6a8e3f },
+  guard: { scale: 1.04, color: 0x3f6740 },
+  heavy: { scale: 1.13, color: 0x476d35 },
+  boss: { scale: 1.2, color: 0x315535 },
 };
+
+interface BodyStation {
+  z: number;
+  width: number;
+  top: number;
+  bottom: number;
+}
+
+const BODY_STATIONS: readonly BodyStation[] = [
+  { z: -1.32, width: 0.055, top: 0.47, bottom: 0.34 },
+  { z: -1.08, width: 0.19, top: 0.58, bottom: 0.26 },
+  { z: -0.78, width: 0.34, top: 0.67, bottom: 0.2 },
+  { z: -0.38, width: 0.47, top: 0.72, bottom: 0.17 },
+  { z: 0.08, width: 0.49, top: 0.7, bottom: 0.16 },
+  { z: 0.49, width: 0.42, top: 0.66, bottom: 0.18 },
+  { z: 0.82, width: 0.31, top: 0.59, bottom: 0.22 },
+  { z: 1.02, width: 0.2, top: 0.51, bottom: 0.29 },
+];
+
+function mesh(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  x = 0,
+  y = 0,
+  z = 0,
+): THREE.Mesh {
+  const result = new THREE.Mesh(geometry, material);
+  result.position.set(x, y, z);
+  result.castShadow = true;
+  result.receiveShadow = true;
+  return result;
+}
+
+function makeBodyGeometry(baseColor: number): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const skin = new THREE.Color(baseColor);
+  const belly = new THREE.Color(0xb7aa75);
+  const ringCount = 18;
+
+  BODY_STATIONS.forEach((station, row) => {
+    const along = row / (BODY_STATIONS.length - 1);
+    for (let ring = 0; ring <= ringCount; ring += 1) {
+      const angle = (ring / ringCount) * Math.PI * 2;
+      const vertical = Math.sin(angle);
+      const x = Math.cos(angle) * station.width;
+      const y = (station.top + station.bottom) * 0.5 +
+        vertical * (station.top - station.bottom) * 0.5;
+      const variation = 0.94 + Math.sin(along * 36 + ring * 1.7) * 0.035;
+      const color = skin.clone().lerp(
+        belly,
+        THREE.MathUtils.smoothstep(-vertical, 0.42, 0.78),
+      ).multiplyScalar(variation);
+      positions.push(x, y, station.z);
+      colors.push(color.r, color.g, color.b);
+      uvs.push(ring / ringCount, along);
+    }
+  });
+
+  const rowLength = ringCount + 1;
+  for (let row = 0; row < BODY_STATIONS.length - 1; row += 1) {
+    for (let ring = 0; ring < ringCount; ring += 1) {
+      const a = row * rowLength + ring;
+      const b = a + rowLength;
+      indices.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeSectionGeometry(
+  stations: readonly BodyStation[],
+  segments = 12,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const station of stations) {
+    for (let segment = 0; segment <= segments; segment += 1) {
+      const angle = (segment / segments) * Math.PI * 2;
+      positions.push(
+        Math.cos(angle) * station.width,
+        (station.top + station.bottom) * 0.5 +
+          Math.sin(angle) * (station.top - station.bottom) * 0.5,
+        station.z,
+      );
+    }
+  }
+  const rowLength = segments + 1;
+  const reverse = stations[stations.length - 1].z < stations[0].z;
+  for (let row = 0; row < stations.length - 1; row += 1) {
+    for (let segment = 0; segment < segments; segment += 1) {
+      const a = row * rowLength + segment;
+      const b = a + rowLength;
+      if (reverse) {
+        indices.push(a, b, a + 1, a + 1, b, b + 1);
+      } else {
+        indices.push(a, a + 1, b, a + 1, b + 1, b);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeScuteGeometry(kind: EnemyKind): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const rows = kind === 'boss' || kind === 'heavy' ? 3 : 2;
+  const count = kind === 'boss' ? 12 : 10;
+
+  for (let row = 0; row < rows; row += 1) {
+    const side = row === 0 ? 0 : row === 1 ? -1 : 1;
+    for (let index = 0; index < count; index += 1) {
+      const z = -0.94 + index * 0.145;
+      const bodyStation = BODY_STATIONS.reduce((nearest, station) =>
+        Math.abs(station.z - z) < Math.abs(nearest.z - z) ? station : nearest,
+      );
+      const x = side === 0 ? 0 : side * bodyStation.width * 0.58;
+      const y = bodyStation.top - (side === 0 ? 0.005 : 0.045);
+      const width = side === 0 ? 0.105 : 0.082;
+      const length = 0.12;
+      const base = positions.length / 3;
+      positions.push(
+        x - width, y, z - length * 0.5,
+        x + width, y, z - length * 0.5,
+        x + width, y, z + length * 0.5,
+        x - width, y, z + length * 0.5,
+        x, y + (kind === 'boss' ? 0.105 : 0.075), z,
+      );
+      indices.push(
+        base, base + 1, base + 4,
+        base + 1, base + 2, base + 4,
+        base + 2, base + 3, base + 4,
+        base + 3, base, base + 4,
+      );
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeTeethGeometry(
+  count: number,
+  spacing: number,
+  length: number,
+  pointDown: boolean,
+): THREE.BufferGeometry {
+  const cone = new THREE.ConeGeometry(0.038, length, 4);
+  const source = cone.getAttribute('position');
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const total = (count - 1) * spacing;
+
+  for (let tooth = 0; tooth < count; tooth += 1) {
+    const base = positions.length / 3;
+    const offsetZ = tooth * spacing - total * 0.5;
+    for (let vertex = 0; vertex < source.count; vertex += 1) {
+      const x = source.getX(vertex);
+      const y = source.getY(vertex);
+      positions.push(x, pointDown ? -y : y, source.getZ(vertex) + offsetZ);
+    }
+    for (let index = 0; index < cone.index!.count; index += 1) {
+      indices.push(base + cone.index!.getX(index));
+    }
+  }
+  cone.dispose();
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function buildCrocodile(kind: EnemyKind): THREE.Group {
+  const style = ENEMY_STYLE[kind];
+  const group = new THREE.Group();
+  group.name = `crocodile-${kind}`;
+  group.scale.setScalar(style.scale);
+
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.84,
+    flatShading: false,
+  });
+  const darkSkin = new THREE.MeshStandardMaterial({
+    color: style.color,
+    roughness: 0.82,
+  });
+  const scutes = new THREE.MeshStandardMaterial({
+    color: kind === 'boss' ? 0x233d2c : 0x304b31,
+    roughness: 0.91,
+  });
+  const mouth = new THREE.MeshStandardMaterial({
+    color: 0x352c28,
+    roughness: 0.88,
+    side: THREE.DoubleSide,
+  });
+  const tooth = new THREE.MeshStandardMaterial({
+    color: 0xf1dfb6,
+    roughness: 0.55,
+  });
+  const eye = new THREE.MeshStandardMaterial({
+    color: 0xf1c54a,
+    emissive: 0x67450c,
+    emissiveIntensity: 0.35,
+    roughness: 0.36,
+  });
+  const pupil = new THREE.MeshBasicMaterial({ color: 0x101514 });
+  const highlight = new THREE.MeshBasicMaterial({ color: 0xfff0cf });
+
+  const body = new THREE.Group();
+  group.add(body);
+  body.add(mesh(makeBodyGeometry(style.color), skin));
+  body.add(mesh(makeScuteGeometry(kind), scutes));
+
+  const head = new THREE.Group();
+  head.position.set(0, 0.48, 0.77);
+  body.add(head);
+  const skull = makeSectionGeometry([
+    { z: -0.06, width: 0.32, top: 0.19, bottom: -0.16 },
+    { z: 0.2, width: 0.36, top: 0.2, bottom: -0.16 },
+    { z: 0.46, width: 0.3, top: 0.13, bottom: -0.13 },
+    { z: 0.82, width: 0.23, top: 0.075, bottom: -0.11 },
+    { z: 1.08, width: 0.26, top: 0.03, bottom: -0.12 },
+  ]);
+  head.add(mesh(skull, darkSkin));
+  head.add(
+    mesh(
+      new THREE.BoxGeometry(0.43, 0.055, 0.92),
+      mouth,
+      0,
+      -0.105,
+      0.56,
+    ),
+  );
+
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -0.11, 0.07);
+  jaw.add(
+    mesh(
+      makeSectionGeometry([
+        { z: 0, width: 0.27, top: 0.015, bottom: -0.075 },
+        { z: 0.24, width: 0.28, top: 0.01, bottom: -0.08 },
+        { z: 0.62, width: 0.21, top: 0.005, bottom: -0.065 },
+        { z: 1.02, width: 0.24, top: -0.015, bottom: -0.07 },
+      ]),
+      darkSkin,
+      0,
+      -0.005,
+      0.06,
+    ),
+  );
+  jaw.add(
+    mesh(
+      makeTeethGeometry(6, 0.13, 0.13, false),
+      tooth,
+      0,
+      -0.035,
+      0.57,
+    ),
+  );
+  head.add(jaw);
+  head.add(
+    mesh(
+      makeTeethGeometry(6, 0.13, 0.12, true),
+      tooth,
+      0,
+      -0.09,
+      0.58,
+    ),
+  );
+
+  const eyeSocket = new THREE.SphereGeometry(0.13, 10, 8);
+  const eyeGeometry = new THREE.SphereGeometry(0.083, 10, 8);
+  const pupilGeometry = new THREE.SphereGeometry(0.034, 8, 6);
+  const glintGeometry = new THREE.SphereGeometry(0.012, 6, 5);
+  const nostrilGeometry = new THREE.SphereGeometry(0.035, 7, 5);
+  for (const side of [-1, 1]) {
+    head.add(mesh(eyeSocket, darkSkin, side * 0.28, 0.14, 0.2));
+    head.add(mesh(eyeGeometry, eye, side * 0.3, 0.17, 0.22));
+    head.add(mesh(pupilGeometry, pupil, side * 0.3, 0.17, 0.29));
+    head.add(mesh(glintGeometry, highlight, side * 0.31, 0.2, 0.31));
+    head.add(mesh(nostrilGeometry, mouth, side * 0.13, 0.038, 1.01));
+  }
+
+  const legs: THREE.Group[] = [];
+  const upperLeg = new THREE.CapsuleGeometry(0.095, 0.22, 3, 7);
+  const footGeometry = new THREE.SphereGeometry(0.12, 8, 6);
+  const clawGeometry = makeTeethGeometry(3, 0.08, 0.075, false);
+  for (const side of [-1, 1]) {
+    for (const z of [-0.56, 0.47]) {
+      const leg = new THREE.Group();
+      leg.position.set(side * 0.39, 0.31, z);
+      leg.add(mesh(upperLeg, darkSkin, side * 0.055, -0.045, 0));
+      leg.add(mesh(footGeometry, darkSkin, side * 0.11, -0.12, 0.055));
+      leg.add(mesh(clawGeometry, tooth, side * 0.11, -0.19, 0.12));
+      body.add(leg);
+      legs.push(leg);
+    }
+  }
+
+  const tailSegments: THREE.Group[] = [];
+  const tailLengths = [0.58, 0.56, 0.52];
+  const tailWidths = [0.3, 0.22, 0.14];
+  let tailParent = body;
+  let tailZ = -1.12;
+  for (let index = 0; index < tailLengths.length; index += 1) {
+    const length = tailLengths[index];
+    const width = tailWidths[index];
+    const tailSegment = new THREE.Group();
+    tailSegment.position.set(index === 0 ? 0 : 0, index === 0 ? 0.39 : 0, tailZ);
+    tailParent.add(tailSegment);
+    const endWidth = index === tailLengths.length - 1 ? 0.025 : width * 0.63;
+    tailSegment.add(
+      mesh(
+        makeSectionGeometry([
+          { z: 0, width, top: width * 0.5, bottom: -width * 0.5 },
+          { z: -length * 0.55, width: width * 0.8, top: width * 0.4, bottom: -width * 0.4 },
+          { z: -length, width: endWidth, top: endWidth * 0.55, bottom: -endWidth * 0.55 },
+        ]),
+        darkSkin,
+      ),
+    );
+    tailSegments.push(tailSegment);
+    tailParent = tailSegment;
+    tailZ = -length;
+  }
+
+  const rippleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xa6e5e8,
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const ripple = mesh(new THREE.RingGeometry(0.64, 0.79, 24), rippleMaterial);
+  ripple.name = 'crocodileRipple';
+  ripple.rotation.x = -Math.PI / 2;
+  ripple.position.y = 0.025;
+  ripple.castShadow = false;
+  ripple.receiveShadow = false;
+  group.add(ripple);
+
+  const frozenMaterial = new THREE.MeshBasicMaterial({
+    color: 0x8fe6ff,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const frozenAura = mesh(new THREE.RingGeometry(0.88, 1.04, 24), frozenMaterial);
+  frozenAura.name = 'frozenWaterAura';
+  frozenAura.rotation.x = -Math.PI / 2;
+  frozenAura.position.y = 0.04;
+  frozenAura.visible = false;
+  frozenAura.castShadow = false;
+  group.add(frozenAura);
+
+  if (kind === 'boss') {
+    const barBacking = mesh(
+      new THREE.BoxGeometry(0.88, 0.11, 0.07),
+      mouth,
+      0,
+      1.16,
+      0.9,
+    );
+    body.add(barBacking);
+    const hpFill = mesh(
+      new THREE.BoxGeometry(0.76, 0.065, 0.04),
+      new THREE.MeshStandardMaterial({
+        color: 0x22cc44,
+        emissive: 0x22cc44,
+        emissiveIntensity: 0.4,
+      }),
+      0,
+      1.16,
+      0.95,
+    );
+    hpFill.name = 'bossHpFill';
+    body.add(hpFill);
+  }
+
+  group.userData.crocodileAnimation = {
+    body,
+    jaw,
+    legs,
+    tailSegments,
+    ripple,
+    frozenAura,
+    phase: kind.length * 0.91 + style.scale,
+  } satisfies CrocodileAnimation;
+  return group;
+}
 
 export function buildEnemyMesh(kind: EnemyKind): THREE.Group {
-  return BUILDERS[kind]();
+  return buildCrocodile(kind);
 }
 
-/** Approximate collision AABB half-extents per enemy kind (before group scale). */
+export function animateEnemyMesh(
+  group: THREE.Group,
+  time: number,
+  attacking: boolean,
+  frozen: boolean,
+  state?: CrocodileState,
+): void {
+  const animation = group.userData.crocodileAnimation as CrocodileAnimation | undefined;
+  if (!animation) return;
+
+  const frozenNow = frozen || state === 'frozen';
+  animation.frozenAura.visible = frozenNow;
+  if (frozenNow) {
+    animation.jaw.rotation.x = 0;
+    animation.ripple.scale.setScalar(0.9);
+    return;
+  }
+
+  const phase = time * 4.7 + animation.phase;
+  const swimming = state === 'swimming' || state === 'approaching' || state === 'chasing';
+  const tailStrength = state === 'stunned' ? 0.08 : swimming ? 0.34 : 0.2;
+  animation.tailSegments.forEach((segment, index) => {
+    segment.rotation.y = Math.sin(phase - index * 0.62) * tailStrength;
+    segment.rotation.x = Math.sin(phase * 0.7 - index * 0.5) * 0.025;
+  });
+  animation.jaw.rotation.x = attacking ? 0.32 + Math.abs(Math.sin(phase * 0.6)) * 0.14 : 0;
+  animation.body.rotation.x = attacking
+    ? -0.055
+    : Math.sin(phase * 0.45) * 0.012;
+  animation.body.rotation.z =
+    state === 'stunned' ? Math.sin(phase * 2) * 0.06 : Math.sin(phase * 0.35) * 0.018;
+  for (let index = 0; index < animation.legs.length; index += 1) {
+    animation.legs[index].rotation.z = swimming
+      ? Math.sin(phase + (index % 2) * Math.PI) * 0.18
+      : 0;
+    animation.legs[index].rotation.x = swimming
+      ? Math.cos(phase + index * 0.9) * 0.07
+      : 0;
+  }
+  animation.ripple.scale.set(
+    1 + Math.sin(phase * 0.46) * 0.08,
+    1,
+    1 + Math.cos(phase * 0.46) * 0.08,
+  );
+  (animation.ripple.material as THREE.MeshBasicMaterial).opacity =
+    0.15 + (Math.sin(phase * 0.46) + 1) * 0.055;
+}
+
 export const ENEMY_HALF_EXTENTS: Record<EnemyKind, { x: number; z: number }> = {
-  basic: { x: 0.42, z: 0.42 },
-  fast:  { x: 0.38, z: 0.38 },
-  guard: { x: 0.48, z: 0.48 },
-  heavy: { x: 0.52, z: 0.52 },
-  boss:  { x: 0.58, z: 0.58 },
+  basic: { x: 0.72, z: 2.15 },
+  fast: { x: 0.66, z: 2.0 },
+  guard: { x: 0.78, z: 2.3 },
+  heavy: { x: 0.86, z: 2.45 },
+  boss: { x: 0.94, z: 2.58 },
 };
 
-/** Maximum HP per kind (matches balance.ts). */
 export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   basic: 1,
-  fast:  1,
+  fast: 1,
   guard: 1,
   heavy: 3,
-  boss:  5,
+  boss: 5,
 };

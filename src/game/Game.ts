@@ -1,5 +1,11 @@
 import * as THREE from 'three';
-import { CAMERA, ECONOMY, ENEMIES, OBSTACLES as OBSTACLES_CFG } from '../config/balance';
+import {
+  CAMERA,
+  ECONOMY,
+  ENEMIES,
+  GARBAGE_CATCH,
+  OBSTACLES as OBSTACLES_CFG,
+} from '../config/balance';
 import {
   getDifficultyProfile,
   type DifficultyProfile,
@@ -14,9 +20,9 @@ import { EconomyManager } from '../economy/EconomyManager';
 import { Environment } from '../world/Environment';
 import { Player } from '../player/Player';
 import {
-  CoinSystem,
-  type CoinCollectEvent,
-} from '../collectibles/CoinSystem';
+  GarbageSystem,
+  type GarbageCollectEvent,
+} from '../collectibles/GarbageSystem';
 import { Particles } from '../collectibles/Particles';
 import { MathGateSystem, type GateActivation } from '../gates/MathGateSystem';
 import { Hud, type RunResults } from '../ui/Hud';
@@ -44,7 +50,7 @@ export class Game {
   private readonly economy: EconomyManager;
   private readonly environment: Environment;
   private readonly player: Player;
-  private readonly coins: CoinSystem;
+  private readonly garbage: GarbageSystem;
   private readonly particles: Particles;
   private readonly gates: MathGateSystem;
   private readonly hud: Hud;
@@ -64,6 +70,7 @@ export class Game {
   private gameOver = false;
   private currentLevelIndex = -1;
   private hitSpeedTimer = 0;
+  private catchCooldown = 0;
   private runCoins = 0;
   private runGates = 0;
   private runEnemies = 0;
@@ -110,12 +117,25 @@ export class Game {
         this.togglePause();
       },
       onResume: () => this.setPaused(false),
-      onPunch: () => {
+      onCatch: () => {
         this.hud.dismissTutorial();
         this.audio.unlock();
-        if (!this.paused && !this.gameOver) {
-          this.punch.trigger(this.player.z, this.player.x);
+        if (
+          this.paused ||
+          this.gameOver ||
+          this.catchCooldown > 0
+        ) {
+          return;
         }
+        this.catchCooldown = GARBAGE_CATCH.cooldown;
+        this.player.catchNet();
+        this.garbage.catchNearby(
+          this.player.z,
+          this.player.x,
+          this.clock.time,
+          GARBAGE_CATCH.rangeX,
+          GARBAGE_CATCH.rangeZ,
+        );
       },
       onRestart: () => {
         this.hud.dismissTutorial();
@@ -140,9 +160,14 @@ export class Game {
     this.player = new Player();
     this.scene.add(this.player.group);
     this.particles = new Particles(this.scene);
-    this.coins = new CoinSystem(this.scene, this.economy, {
-      onCollect: (event) => this.handleCoin(event),
-    });
+    this.garbage = new GarbageSystem(
+      this.scene,
+      this.economy,
+      {
+        onCollect: (event) => this.handleGarbageCollection(event),
+      },
+      this.reservations,
+    );
     this.gates = new MathGateSystem(
       this.scene,
       this.economy,
@@ -183,6 +208,9 @@ export class Game {
       onHit: (_superPunch) => {
         this.player.punch();
         this.audio.punchHit();
+        this.particles.spawn(
+          new THREE.Vector3(this.player.x, 0.12, this.player.z - 2.2),
+        );
       },
       onMiss: () => {
         this.player.punch();
@@ -242,8 +270,9 @@ export class Game {
     window.removeEventListener('pointerdown', this.unlockAudio);
     window.removeEventListener('keydown', this.unlockAudio);
     this.input.dispose();
+    this.player.dispose();
     this.hud.dispose();
-    this.coins.dispose();
+    this.garbage.dispose();
     this.particles.dispose();
     this.gates.dispose();
     this.obstacles.dispose();
@@ -301,6 +330,7 @@ export class Game {
   }
 
   private update(dt: number): void {
+    this.catchCooldown = Math.max(0, this.catchCooldown - dt);
     this.invulnerabilityTimer = Math.max(0, this.invulnerabilityTimer - dt);
     const invulnerable = this.invulnerabilityTimer > 0;
     this.obstacles.invulnerable = invulnerable;
@@ -315,6 +345,7 @@ export class Game {
 
     const levelState = getLevelState(this.distance);
     const difficulty = getDifficultyProfile(levelState.level.index);
+    this.reservations.prune(this.distance);
     if (levelState.level.index !== this.currentLevelIndex) {
       if (this.currentLevelIndex >= 0) {
         this.audio.levelUp();
@@ -325,14 +356,12 @@ export class Game {
 
     this.player.update(dt, this.clock.time, this.distance, speed);
     this.environment.update(this.player.z, this.player.x, this.distance, dt);
-    this.coins.update(
-      dt,
-      this.clock.time,
-      this.distance,
+    this.gates.update(
+      this.player.z,
       this.player.x,
-      difficulty,
+      this.distance,
+      this.clock.time,
     );
-    this.gates.update(this.player.z, this.player.laneIndex, this.distance);
     this.obstacles.update(
       this.player.z,
       this.player.x,
@@ -355,9 +384,16 @@ export class Game {
       this.player.x,
     );
     for (const type of expired) this.deactivatePowerUp(type);
+    this.garbage.update(
+      dt,
+      this.clock.time,
+      this.distance,
+      this.player.x,
+      difficulty,
+    );
     this.hud.setPowerUps(this.powerups.timers.getStates());
     this.punch.update(dt);
-    this.hud.setPunchCooldown(this.punch.cooldownRatio);
+    this.hud.setCatchCooldown(this.catchCooldown / GARBAGE_CATCH.cooldown);
     this.particles.update(dt);
     this.hud.setProgress(levelState.progress);
 
@@ -377,7 +413,7 @@ export class Game {
     this.camera.lookAt(this.cameraLook);
   }
 
-  private handleCoin(event: CoinCollectEvent): void {
+  private handleGarbageCollection(event: GarbageCollectEvent): void {
     this.particles.spawn(event.position);
     this.audio.coin();
     this.runCoins += 1;
@@ -390,7 +426,7 @@ export class Game {
 
   private handleGate(activation: GateActivation): void {
     this.runGates += 1;
-    this.particles.spawn(activation.position);
+    this.particles.spawnSplash(activation.position);
     this.audio.gate(activation.positive);
     this.hud.showCalculation(activation.text, activation.positive);
   }
@@ -404,9 +440,10 @@ export class Game {
     }
 
     if (event.fatal) {
+      this.particles.spawn(event.position);
       this.audio.hit();
       this.hud.flashHit();
-      this.endRun('Crashed into a road obstacle.');
+      this.endRun('Crashed into floating river debris.');
     }
   }
 
@@ -424,6 +461,7 @@ export class Game {
     }
 
     this.audio.enemyHit();
+    this.particles.spawn(event.position);
     this.hitSpeedTimer = OBSTACLES_CFG.speedPenaltyDuration;
     this.hud.flashHit();
 
@@ -454,7 +492,7 @@ export class Game {
   private activatePowerUp(type: PowerUpType): void {
     switch (type) {
       case 'magnet':
-        this.coins.setMagnet(true);
+        this.garbage.setMagnet(true);
         break;
       case 'shield':
         this.obstacles.shieldActive = true;
@@ -465,7 +503,7 @@ export class Game {
         this.punch.superPunchActive = true;
         break;
       case 'double-coins':
-        this.coins.setCoinMultiplier(2);
+        this.garbage.setCoinMultiplier(2);
         break;
       case 'freeze':
         this.enemies.setFreeze(true);
@@ -476,7 +514,7 @@ export class Game {
   private deactivatePowerUp(type: PowerUpType): void {
     switch (type) {
       case 'magnet':
-        this.coins.setMagnet(false);
+        this.garbage.setMagnet(false);
         break;
       case 'shield':
         this.setShieldEffects(false);
@@ -486,7 +524,7 @@ export class Game {
         this.punch.superPunchActive = false;
         break;
       case 'double-coins':
-        this.coins.setCoinMultiplier(1);
+        this.garbage.setCoinMultiplier(1);
         break;
       case 'freeze':
         this.enemies.setFreeze(false);
@@ -576,7 +614,7 @@ export class Game {
     this.reservations.clear();
     this.economy.resetRun(ECONOMY.startingBalance);
     this.player.reset();
-    this.coins.reset();
+    this.garbage.reset();
     this.gates.reset();
     this.obstacles.reset();
     this.enemies.reset();
@@ -588,6 +626,7 @@ export class Game {
     this.distance = 0;
     this.currentLevelIndex = -1;
     this.hitSpeedTimer = 0;
+    this.catchCooldown = 0;
     this.runCoins = 0;
     this.runGates = 0;
     this.runEnemies = 0;

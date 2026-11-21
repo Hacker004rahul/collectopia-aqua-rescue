@@ -14,7 +14,7 @@ export interface HudCallbacks {
   onStart: () => void;
   onPause: () => void;
   onResume: () => void;
-  onPunch: () => void;
+  onCatch: () => void;
   onRestart: () => void;
   onWatchRevive: () => void;
   onReviveComplete: () => void;
@@ -35,12 +35,22 @@ export interface RunResults {
 const TEMPLATE = `
   <div class="hud-top">
     <div class="brand">
-      <p class="brand-kicker">INDIAN STREET RUN</p>
+      <p class="brand-kicker">RIVER RESCUE RUN</p>
       <h1 class="brand-title">COLLECTOPIA</h1>
     </div>
     <div class="hud-stats">
       <div class="balance-pill">
-        <span class="coin-icon" aria-hidden="true"></span>
+        <svg class="coin-icon" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="water-token-gradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f2ffff"/>
+              <stop offset="0.48" stop-color="#64d8f2"/>
+              <stop offset="1" stop-color="#1685c3"/>
+            </linearGradient>
+          </defs>
+          <path class="water-token-drop" d="M16 2.8C12.8 8 6.4 14.4 6.4 20.3a9.6 9.6 0 0 0 19.2 0C25.6 14.4 19.2 8 16 2.8Z"/>
+          <path class="water-token-glint" d="M11.5 18.1c.3-2.1 1.8-4.1 3.2-5.8"/>
+        </svg>
         <span class="balance-copy">
           <span class="balance-label">COINS</span>
           <span class="balance-value">0</span>
@@ -54,7 +64,7 @@ const TEMPLATE = `
   <div class="level-row">
     <div class="level-copy">
       <span class="level-name">Level 1</span>
-      <span class="level-zone">Residential Street</span>
+      <span class="level-zone">Riverbank Homes</span>
     </div>
     <div class="progress-track" role="progressbar" aria-label="Level progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="progress-fill"></div>
@@ -71,24 +81,22 @@ const TEMPLATE = `
   </div>
   <div class="tutorial-hint" role="status" aria-live="polite" aria-hidden="true">
     <span class="tutorial-touch">Swipe or drag to steer</span>
-    <span class="tutorial-keys">← → or A / D · F or Space to punch · Esc to pause</span>
+    <span class="tutorial-keys">← → or A / D · F or Space to punch · Touch CATCH · Esc to pause</span>
   </div>
   <div class="start-prompt">
     <button class="start-button" type="button" aria-label="Start run">START RUN</button>
   </div>
-  <div class="punch-area">
-    <button class="punch-button" type="button" aria-label="Punch">
-      <svg class="punch-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5.2 10.4V8.8a1.6 1.6 0 0 1 3.2 0v1.4"/>
-        <path d="M8.4 9.9V7.7a1.6 1.6 0 0 1 3.2 0v2.1"/>
-        <path d="M11.6 9.9V8.1a1.6 1.6 0 0 1 3.2 0v2"/>
-        <path d="M14.8 10V9a1.6 1.6 0 0 1 3.2 0v5.4c0 2.7-2 4.8-4.7 4.8h-1.1c-1.4 0-2.6-.7-3.4-1.8l-3-4.2a1.7 1.7 0 0 1 2.6-2.1l1.4 1.3"/>
-        <path d="M5.2 10.4H4.1a1.6 1.6 0 0 0 0 3.2h1.1"/>
+  <div class="catch-area">
+    <button class="catch-button" type="button" aria-label="Catch nearby river waste">
+      <svg class="catch-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4.2 5.2h15.6l-2 9.6a3 3 0 0 1-3 2.4H9.2a3 3 0 0 1-3-2.4l-2-9.6Z"/>
+        <path d="M2.5 5.2h19M7.2 5.2 9 15.8m3-10.6v12m4.8-12-1.8 10.6"/>
+        <path d="m9 18.2 3 3 3-3"/>
       </svg>
-      <span class="punch-label">PUNCH</span>
-      <svg class="punch-cooldown-ring" viewBox="0 0 44 44" aria-hidden="true">
-        <circle class="punch-cooldown-track" cx="22" cy="22" r="18"/>
-        <circle class="punch-cooldown-fill" cx="22" cy="22" r="18"/>
+      <span class="catch-label">CATCH</span>
+      <svg class="catch-cooldown-ring" viewBox="0 0 44 44" aria-hidden="true">
+        <circle class="catch-cooldown-track" cx="22" cy="22" r="18"/>
+        <circle class="catch-cooldown-fill" cx="22" cy="22" r="18"/>
       </svg>
     </button>
   </div>
@@ -97,7 +105,7 @@ const TEMPLATE = `
       <p class="pause-kicker">TAKE A BREATH</p>
       <h2>PAUSED</h2>
       <button class="resume-button" type="button">Resume run</button>
-      <p class="pause-note">Stay in your lane. Collect coins. Choose the better gate.</p>
+      <p class="pause-note">Steer your boat. Collect river waste. Choose the better gate.</p>
     </div>
   </div>
   <div class="results-overlay" role="dialog" aria-modal="true" aria-labelledby="results-title" hidden>
@@ -205,8 +213,8 @@ export class Hud {
   private readonly restartButton: HTMLButtonElement;
   private readonly resultsReason: HTMLElement;
   private readonly pauseButton: HTMLButtonElement;
-  private readonly punchButton: HTMLButtonElement;
-  private readonly punchCooldownFill: SVGCircleElement;
+  private readonly catchButton: HTMLButtonElement;
+  private readonly catchCooldownFill: SVGCircleElement;
   private readonly powerupStrip: HTMLElement;
   private readonly powerupChips = new Map<PowerUpType, HTMLElement>();
   private readonly powerupBars = new Map<PowerUpType, HTMLElement>();
@@ -263,16 +271,16 @@ export class Hud {
     this.tutorialComplete = hasCompletedTutorial();
     this.pauseButton.disabled = true;
 
-    this.punchButton = this.query<HTMLButtonElement>('.punch-button');
-    this.punchButton.disabled = true;
-    this.punchCooldownFill = this.root.querySelector(
-      '.punch-cooldown-fill',
+    this.catchButton = this.query<HTMLButtonElement>('.catch-button');
+    this.catchButton.disabled = true;
+    this.catchCooldownFill = this.root.querySelector(
+      '.catch-cooldown-fill',
     ) as SVGCircleElement;
 
     // Circumference of the cooldown ring (r=18 → c ≈ 113.1)
     const CIRCUMFERENCE = 2 * Math.PI * 18;
-    this.punchCooldownFill.style.strokeDasharray = `${CIRCUMFERENCE}`;
-    this.punchCooldownFill.style.strokeDashoffset = '0';
+    this.catchCooldownFill.style.strokeDasharray = `${CIRCUMFERENCE}`;
+    this.catchCooldownFill.style.strokeDashoffset = '0';
 
     this.startButton.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -284,9 +292,9 @@ export class Hud {
       callbacks.onPause();
     });
 
-    this.punchButton.addEventListener('pointerdown', (event) => {
+    this.catchButton.addEventListener('pointerdown', (event) => {
       event.stopPropagation();
-      callbacks.onPunch();
+      callbacks.onCatch();
     });
 
     const resumeButton = this.query<HTMLButtonElement>('.resume-button');
@@ -555,7 +563,7 @@ export class Hud {
   beginRun(): void {
     this.startPrompt.hidden = true;
     this.pauseButton.disabled = false;
-    this.punchButton.disabled = false;
+    this.catchButton.disabled = false;
     this.root.classList.add('is-started');
 
     if (this.tutorialComplete) return;
@@ -590,21 +598,21 @@ export class Hud {
   }
 
   /**
-   * Update the Punch button cooldown ring.
-   * @param ratio  0 = ready, 1 = just punched (full cooldown).
+   * Update the Catch button cooldown ring.
+   * @param ratio  0 = ready, 1 = just used (full cooldown).
    */
-  setPunchCooldown(ratio: number): void {
+  setCatchCooldown(ratio: number): void {
     const clamped = Math.max(0, Math.min(1, ratio));
+    this.catchButton.classList.toggle('is-ready', clamped === 0);
+    this.catchButton.disabled = clamped > 0;
     const readinessChanged = (clamped === 0) !== (this.lastCooldownRatio === 0);
     if (Math.abs(clamped - this.lastCooldownRatio) < 0.01 && !readinessChanged) return;
     this.lastCooldownRatio = clamped;
 
     const CIRCUMFERENCE = 2 * Math.PI * 18;
-    this.punchCooldownFill.style.strokeDashoffset = String(
+    this.catchCooldownFill.style.strokeDashoffset = String(
       CIRCUMFERENCE * (1 - clamped),
     );
-    this.punchButton.classList.toggle('is-ready', clamped === 0);
-    this.punchButton.disabled = clamped > 0;
   }
 
   /** Show a floating reward amount at a screen position (enemy defeated). */

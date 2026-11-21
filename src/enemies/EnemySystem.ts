@@ -3,13 +3,11 @@
  *
  * Responsibilities
  *  - Procedurally spawn enemy encounters ahead of the player.
- *  - Animate enemies: approach, lane-change, knockback, defeated-flash.
- *  - Detect AABB player contact and apply a one-time damage penalty per
- *    cooldown window via EconomyManager.
+ *  - Animate swimming crocodiles with approach, chase, attack and stun states.
+ *  - Apply one damage transaction per telegraphed bite via EconomyManager.
  *  - Support punch hits: reduce HP, trigger knockback, award defeat reward once.
  *  - Recycle enemies behind the player.
- *  - Expose shieldActive flag (Phase 5 sets it to block damage).
- *  - Expose freezeActive flag (Phase 5 sets it to freeze enemy movement).
+ *  - Integrate Shield and Freeze power-ups without changing their economy rules.
  *  - Scale difficulty with the current level index (faster, denser, tougher).
  */
 import * as THREE from 'three';
@@ -23,9 +21,11 @@ import { Rng } from '../core/Rng';
 import type { SpawnReservations } from '../core/SpawnReservations';
 import type { EconomyManager } from '../economy/EconomyManager';
 import {
+  animateEnemyMesh,
   buildEnemyMesh,
   ENEMY_HALF_EXTENTS,
   ENEMY_MAX_HP,
+  type CrocodileState,
   type EnemyKind,
 } from './EnemyMeshBuilder';
 
@@ -63,8 +63,13 @@ interface EnemyRecord {
   halfZ: number;
   hp: number;
   maxHp: number;
-  /** Cooldown before the same enemy can damage the player again (s). */
-  hitCooldown: number;
+  state: CrocodileState;
+  stateTimer: number;
+  frozenState: CrocodileState;
+  attackCooldown: number;
+  attackTimer: number;
+  attackCount: number;
+  attackHitApplied: boolean;
   /** Knockback: metres remaining to push the enemy back. */
   knockbackRemaining: number;
   rewardClaimed: boolean;
@@ -73,6 +78,8 @@ interface EnemyRecord {
   defeatTimer: number;
   /** Approach speed this enemy uses (m/s, scaled by level). */
   approachSpeed: number;
+  /** Group scale restored after the entrance animation. */
+  spawnScale: number;
 }
 
 // Reward table keyed by kind
@@ -194,20 +201,20 @@ export class EnemySystem {
       const rec = this.records[i];
       if (!rec.active) continue;
 
-      // recycle when well behind the player
+      // Recycle objects that have passed safely behind the boat.
       if (-rec.distance > playerZ + ENEMIES.recycleBehind) {
         this.deactivate(i);
         continue;
       }
 
-      // defeat flash / fade and removal
+      // Defeated crocodiles fade out before their pooled scene record is removed.
       if (rec.hp <= 0) {
         rec.defeatTimer -= dt;
         if (rec.defeatTimer <= 0) {
           this.deactivate(i);
         } else {
-          // fade out the mesh
           const alpha = rec.defeatTimer / DEFEAT_FLASH_DURATION;
+          rec.group.scale.setScalar(rec.spawnScale * alpha);
           rec.group.traverse((obj) => {
             const m = obj as THREE.Mesh;
             if (!m.isMesh) return;
@@ -222,9 +229,29 @@ export class EnemySystem {
         continue;
       }
 
-      // freeze: skip movement when freeze power-up is active
-      if (!this.freezeActive) {
-        // knockback: push the enemy away from the player (larger Z)
+      if (this.freezeActive || rec.state === 'frozen') {
+        if (rec.state !== 'frozen') {
+          rec.frozenState = rec.state;
+          rec.state = 'frozen';
+        }
+        this.updateEnemyTransform(rec, dt);
+        animateEnemyMesh(rec.group, this.time, false, true, 'frozen');
+        continue;
+      }
+
+      const gap = rec.distance - playerDistance;
+      let attacking = false;
+      let closingScale = 0.65;
+
+      if (rec.state === 'spawning') {
+        rec.stateTimer = Math.max(0, rec.stateTimer - dt);
+        const progress = 1 - rec.stateTimer / 0.48;
+        rec.group.scale.setScalar(
+          rec.spawnScale * THREE.MathUtils.lerp(0.24, 1, progress),
+        );
+        if (rec.stateTimer === 0) rec.state = 'swimming';
+      } else if (rec.state === 'stunned') {
+        rec.stateTimer = Math.max(0, rec.stateTimer - dt);
         if (rec.knockbackRemaining > 0) {
           const step = Math.min(
             rec.knockbackRemaining,
@@ -232,30 +259,53 @@ export class EnemySystem {
           );
           rec.distance += step;
           rec.knockbackRemaining = Math.max(0, rec.knockbackRemaining - step);
+        }
+        if (rec.stateTimer === 0) rec.state = 'approaching';
+      } else if (rec.state === 'attacking') {
+        rec.attackTimer = Math.max(0, rec.attackTimer - dt);
+        if (rec.attackTimer === 0) {
+          rec.state = 'chasing';
+          rec.attackCooldown = ENEMIES.hitCooldown;
         } else {
-          // approach: enemy moves towards the player (closing distance gap)
-          const closing = rec.approachSpeed + speed;
-          rec.distance -= closing * dt;
+          attacking = true;
+          closingScale =
+            rec.attackTimer <= ENEMIES.attackDamageWindow ? 1.8 : 0.9;
         }
-
-        // lane-change drift
-        const targetX = LANES[rec.targetLaneIndex];
-        if (Math.abs(rec.x - targetX) > 0.05) {
-          const dir = rec.x < targetX ? 1 : -1;
-          rec.x += dir * ENEMIES.laneChangeSpeed * dt;
-          if ((dir > 0 && rec.x >= targetX) || (dir < 0 && rec.x <= targetX)) {
-            rec.x = targetX;
-            rec.laneIndex = rec.targetLaneIndex;
-          }
+      } else {
+        rec.attackCooldown = Math.max(0, rec.attackCooldown - dt);
+        if (gap <= ENEMIES.attackTriggerDistance && rec.attackCooldown === 0) {
+          rec.state = 'attacking';
+          rec.attackTimer = ENEMIES.attackDuration;
+          rec.attackCount += 1;
+          rec.attackHitApplied = false;
+          attacking = true;
+          closingScale = 0.9;
+        } else if (gap <= ENEMIES.chaseDistance) {
+          rec.state = 'chasing';
+          rec.targetLaneIndex = this.playerLane(playerX);
+          closingScale = 1;
+        } else if (gap <= ENEMIES.approachDistance) {
+          rec.state = 'approaching';
+          rec.targetLaneIndex = this.playerLane(playerX);
+          closingScale = 0.82;
+        } else {
+          rec.state = 'swimming';
+          closingScale = 0.65;
         }
       }
 
-      rec.group.position.set(rec.x, 0, -rec.distance);
-
-      // tick hit cooldown
-      if (rec.hitCooldown > 0) {
-        rec.hitCooldown = Math.max(0, rec.hitCooldown - dt);
+      if (
+        rec.state !== 'stunned' &&
+        rec.state !== 'spawning'
+      ) {
+        const lunge = attacking && rec.attackTimer <= ENEMIES.attackDamageWindow
+          ? ENEMIES.attackLungeSpeed
+          : 0;
+        rec.distance -= (rec.approachSpeed * closingScale + lunge) * dt;
       }
+
+      this.updateEnemyTransform(rec, dt);
+      animateEnemyMesh(rec.group, this.time, attacking, false, rec.state);
 
       // AABB overlap test
       const ez = -rec.distance;
@@ -268,24 +318,23 @@ export class EnemySystem {
         this._pMin.z <= this._eMax.z &&
         this._pMax.z >= this._eMin.z;
 
-      if (!overlaps || rec.hitCooldown > 0) continue;
+      if (
+        !overlaps ||
+        rec.state !== 'attacking' ||
+        rec.attackTimer > ENEMIES.attackDamageWindow ||
+        rec.attackHitApplied
+      ) continue;
 
-      // Frozen enemies cannot damage the player.
-      if (this.freezeActive) continue;
-
-      rec.hitCooldown = ENEMIES.hitCooldown;
+      rec.attackHitApplied = true;
       if (this.invulnerable) {
-        rec.knockbackRemaining = ENEMIES.knockbackDistance * 2;
+        this.stunEnemy(rec, ENEMIES.knockbackDistance * 2);
         continue;
       }
 
-      this._hitPos.set(rec.x, 1.2, ez);
+      this._hitPos.set(rec.x, 0.45, ez);
 
       if (this.shieldActive) {
-        // Shield absorbs the hit and shoves the enemy back so it cannot
-        // immediately overlap the player after the shield is consumed.
-        rec.knockbackRemaining = ENEMIES.knockbackDistance * 2;
-        rec.hitCooldown = ENEMIES.hitCooldown;
+        this.stunEnemy(rec, ENEMIES.knockbackDistance * 2);
         this.callbacks.onPlayerHit({
           position: this._hitPos.clone(),
           shieldBlocked: true,
@@ -293,7 +342,7 @@ export class EnemySystem {
         continue;
       }
 
-      const sourceId = `enemy:${rec.id}:${Math.floor(this.time * 10)}`;
+      const sourceId = `enemy:${rec.id}:${rec.attackCount}`;
       const result = this.economy.apply({
         type: 'enemy-damage',
         sourceId,
@@ -315,6 +364,19 @@ export class EnemySystem {
   setFreeze(active: boolean): void {
     if (this.freezeActive === active) return;
     this.freezeActive = active;
+    for (const rec of this.records) {
+      if (!rec.active || rec.hp <= 0) continue;
+      if (active) {
+        rec.frozenState = rec.state;
+        rec.state = 'frozen';
+      } else if (rec.state === 'frozen') {
+        rec.state =
+          rec.frozenState === 'attacking'
+            ? 'approaching'
+            : rec.frozenState;
+        rec.attackCooldown = Math.max(rec.attackCooldown, 0.6);
+      }
+    }
     this.setFrozenVisual(active);
   }
 
@@ -336,6 +398,9 @@ export class EnemySystem {
       const damage = superPunch ? 2 : 1;
       rec.hp = Math.max(0, rec.hp - damage);
       rec.knockbackRemaining = ENEMIES.knockbackDistance;
+      rec.state = 'stunned';
+      rec.stateTimer = superPunch ? ENEMIES.stunDuration * 1.5 : ENEMIES.stunDuration;
+      rec.attackCooldown = Math.max(rec.attackCooldown, ENEMIES.hitCooldown);
 
       // boss health bar update
       if (rec.kind === 'boss') {
@@ -348,6 +413,7 @@ export class EnemySystem {
       if (rec.hp <= 0 && !rec.rewardClaimed) {
         rec.rewardClaimed = true;
         rec.defeatTimer = DEFEAT_FLASH_DURATION;
+        rec.state = 'despawning';
 
         const reward = REWARDS[rec.kind];
         const sourceId = `enemy-reward:${rec.id}`;
@@ -431,6 +497,8 @@ export class EnemySystem {
     const group = buildEnemyMesh(kind);
     const x = LANES[laneIndex];
     group.position.set(x, 0, -baseDistance);
+    const spawnScale = group.scale.x;
+    group.scale.multiplyScalar(0.24);
     this.scene.add(group);
     if (this.frozenVisualActive) this.applyFrozenMaterial(group, true);
 
@@ -453,12 +521,19 @@ export class EnemySystem {
       halfZ: half.z,
       hp,
       maxHp: ENEMY_MAX_HP[kind],
-      hitCooldown: 0,
+      state: 'spawning',
+      stateTimer: 0.48,
+      frozenState: 'swimming',
+      attackCooldown: this.rng.range(1.3, 2.1),
+      attackTimer: 0,
+      attackCount: 0,
+      attackHitApplied: false,
       knockbackRemaining: 0,
       rewardClaimed: false,
       active: true,
       defeatTimer: 0,
       approachSpeed,
+      spawnScale,
     });
 
     this.reservations?.reserve({
@@ -472,6 +547,56 @@ export class EnemySystem {
 
   private pickKind(difficulty: DifficultyProfile): EnemyKind {
     return pickWeighted(difficulty.enemy.kindWeights, this.rng.next());
+  }
+
+  private playerLane(playerX: number): number {
+    let closest = 0;
+    for (let lane = 1; lane < LANES.length; lane += 1) {
+      if (Math.abs(LANES[lane] - playerX) < Math.abs(LANES[closest] - playerX)) {
+        closest = lane;
+      }
+    }
+    return closest;
+  }
+
+  private updateEnemyTransform(rec: EnemyRecord, dt: number): void {
+    if (
+      !this.freezeActive &&
+      rec.state !== 'stunned' &&
+      rec.state !== 'spawning'
+    ) {
+      const targetX = LANES[rec.targetLaneIndex];
+      rec.x = THREE.MathUtils.damp(
+        rec.x,
+        targetX,
+        rec.state === 'chasing' ? ENEMIES.laneChangeSpeed : ENEMIES.laneChangeSpeed * 0.68,
+        dt,
+      );
+      if (Math.abs(rec.x - targetX) < 0.035) {
+        rec.x = targetX;
+        rec.laneIndex = rec.targetLaneIndex;
+      }
+    }
+
+    rec.group.position.set(
+      rec.x,
+      0.025 + Math.sin(this.time * 2.2 + rec.id) * 0.035,
+      -rec.distance,
+    );
+    const targetX = LANES[rec.targetLaneIndex];
+    rec.group.rotation.y = THREE.MathUtils.damp(
+      rec.group.rotation.y,
+      THREE.MathUtils.clamp((targetX - rec.x) * 0.1, -0.22, 0.22),
+      8,
+      dt,
+    );
+  }
+
+  private stunEnemy(rec: EnemyRecord, knockback: number): void {
+    rec.state = 'stunned';
+    rec.stateTimer = ENEMIES.stunDuration;
+    rec.knockbackRemaining = Math.max(rec.knockbackRemaining, knockback);
+    rec.attackCooldown = Math.max(rec.attackCooldown, ENEMIES.hitCooldown);
   }
 
   private setFrozenVisual(active: boolean): void {
@@ -514,25 +639,32 @@ export class EnemySystem {
   }
 
   private flashEnemy(rec: EnemyRecord): void {
-    // Brief white flash on hit
     rec.group.traverse((obj) => {
       const m = obj as THREE.Mesh;
       if (!m.isMesh) return;
       const mat = m.material as THREE.MeshStandardMaterial;
       if (!mat.emissive) return;
+      if (mat.userData.flashEmissive === undefined) {
+        mat.userData.flashEmissive = mat.emissive.getHex();
+        mat.userData.flashIntensity = mat.emissiveIntensity;
+      }
       mat.emissive.set(0xffffff);
       mat.emissiveIntensity = 0.9;
     });
     setTimeout(() => {
-      if (!rec.active && rec.hp <= 0) return;
+      if (!rec.active) return;
       rec.group.traverse((obj) => {
         const m = obj as THREE.Mesh;
         if (!m.isMesh) return;
         const mat = m.material as THREE.MeshStandardMaterial;
         if (!mat.emissive) return;
-        mat.emissive.set(0x000000);
-        mat.emissiveIntensity = 0;
+        if (mat.userData.flashEmissive === undefined) return;
+        mat.emissive.setHex(mat.userData.flashEmissive as number);
+        mat.emissiveIntensity = mat.userData.flashIntensity as number;
+        delete mat.userData.flashEmissive;
+        delete mat.userData.flashIntensity;
       });
+      if (this.freezeActive) this.applyFrozenMaterial(rec.group, true);
     }, 100);
   }
 
@@ -555,13 +687,16 @@ export class EnemySystem {
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function disposeGroup(group: THREE.Group): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
   group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh) mesh.geometry.dispose();
-    // materials are per-instance; dispose them too
+    if (mesh.isMesh) geometries.add(mesh.geometry);
     const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
     if (!mat) return;
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
+    if (Array.isArray(mat)) mat.forEach((m) => materials.add(m));
+    else materials.add(mat);
   });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
 }

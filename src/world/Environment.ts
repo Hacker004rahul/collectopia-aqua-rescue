@@ -8,8 +8,11 @@ import {
 import { getZoneTheme, ZONE_ORDER, type ZoneId, type ZoneTheme } from '../config/zones';
 import { createCloudTexture, createGlowTexture } from '../assets/proceduralTextures';
 import { getDeviceQuality } from '../core/device';
-import { StreetChunkBuilder, type BuiltStreetChunk } from './street/StreetChunkBuilder';
-import { MovingTraffic } from './street/MovingTraffic';
+import {
+  RIVER_WIDTH,
+  StreetChunkBuilder,
+  type BuiltStreetChunk,
+} from './street/StreetChunkBuilder';
 import { StreetMaterials } from './street/StreetMaterials';
 import { AdSystem } from './ads/AdSystem';
 
@@ -24,6 +27,17 @@ const PREFETCH_BUDGET_MS = 2.5;
 const MAX_RETAINED_POOLS = 3;
 const TRANSITION_SWAP_DELAY = 0.28;
 const TRANSITION_TOTAL = 0.9;
+const RIVER_LENGTH = 1200;
+
+function createRiverSurface(material: THREE.Material): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(RIVER_WIDTH, RIVER_LENGTH, 48, 900);
+  geometry.rotateX(-Math.PI / 2);
+
+  const surface = new THREE.Mesh(geometry, material);
+  surface.position.y = 0.012;
+  surface.receiveShadow = true;
+  return surface;
+}
 
 interface ChunkState extends BuiltStreetChunk {
   variant: number;
@@ -83,9 +97,9 @@ export class Environment {
   private readonly skyRig = new THREE.Group();
   private readonly sunLight: THREE.DirectionalLight;
   private readonly hemisphereLight: THREE.HemisphereLight;
+  private readonly riverSurface: THREE.Mesh;
   private readonly materials = new StreetMaterials();
   private readonly builder = new StreetChunkBuilder(this.materials);
-  private readonly movingTraffic: MovingTraffic;
   private readonly ads: AdSystem;
   private readonly glowTexture = createGlowTexture();
   private readonly cloudTexture = createCloudTexture();
@@ -128,6 +142,13 @@ export class Environment {
 
     scene.fog = new THREE.Fog(this.fogColor, this.fogNear, this.fogFar);
     scene.background = this.backgroundColor;
+    this.riverSurface = createRiverSurface(this.materials.water);
+    const waterUniforms = this.materials.water.uniforms;
+    waterUniforms.uRiverWidth.value = RIVER_WIDTH;
+    (waterUniforms.uSunDirection.value as THREE.Vector3)
+      .set(18, 22, 10)
+      .normalize();
+    this.root.add(this.riverSurface);
 
     this.skyMaterial = this.buildSky();
     const quality = getDeviceQuality();
@@ -143,7 +164,7 @@ export class Environment {
       this.sunColor,
       this.sunIntensity,
     );
-    this.sunLight.position.set(16, 26, 12);
+    this.sunLight.position.set(18, 22, 10);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(
       quality.shadowMapSize,
@@ -173,8 +194,6 @@ export class Environment {
       this.root.add(pool.root);
     }
 
-    this.movingTraffic = new MovingTraffic(this.materials);
-    scene.add(this.movingTraffic.root);
     this.ads = new AdSystem(scene);
     scene.add(this.root);
     scene.add(this.skyRig);
@@ -182,6 +201,13 @@ export class Environment {
   }
 
   update(playerZ: number, playerX: number, distance: number, dt: number): void {
+    this.materials.updateWater(dt);
+    this.riverSurface.position.z = playerZ;
+    (this.materials.water.uniforms.uBoatPosition.value as THREE.Vector3).set(
+      playerX,
+      0,
+      playerZ,
+    );
     const level = getLevelState(distance).level;
     const zone = getZoneTheme(level.zoneId);
     this.currentLevelIndex = level.index;
@@ -218,24 +244,23 @@ export class Environment {
     }
 
     this.updateAtmosphere(dt, zone);
-    this.movingTraffic.update(
-      playerZ,
-      playerX,
-      dt,
-      this.activeZoneId === 'traffic' && !this.transition,
-    );
-
     if (this.activeZoneId) {
       this.ads.update(distance, playerZ, this.activeZoneId);
     }
 
     this.skyRig.position.set(playerX * 0.15, 0, playerZ);
 
-    this.sunLight.position.set(playerX + 16, 26, playerZ + 12);
+    this.sunLight.position.set(playerX + 18, 22, playerZ + 10);
     this.sunLight.target.position.set(playerX, 0, playerZ - 16);
   }
 
   reset(playerZ = 0): void {
+    this.riverSurface.position.z = playerZ;
+    (this.materials.water.uniforms.uBoatPosition.value as THREE.Vector3).set(
+      0,
+      0,
+      playerZ,
+    );
     this.cancelPrefetch();
     this.transition = null;
     this.onZoneTransition?.('', false);
@@ -251,14 +276,13 @@ export class Environment {
 
   dispose(): void {
     this.cancelPrefetch();
-    this.movingTraffic.dispose();
-    this.scene.remove(this.movingTraffic.root);
     this.ads.dispose();
 
     for (const pool of this.pools.values()) {
       this.disposePool(pool);
       this.root.remove(pool.root);
     }
+    this.riverSurface.geometry.dispose();
 
     this.skyRig.traverse((object) => {
       const renderable = object as THREE.Mesh | THREE.Sprite;

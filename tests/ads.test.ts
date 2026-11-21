@@ -10,6 +10,8 @@ import { ADVERTISING, GATES, LANES, ROAD } from '../src/config/balance';
 import {
   AD_SIDE_OFFSET,
   AD_BUILDING_FACE_X,
+  AD_RIVER_EDGE_X,
+  AD_BANK_OUTER_X,
   AD_SIDEWALK_OUTER_X,
   AD_PLAYER_FACING_LEAN,
   AD_HOARDING_PANEL_WIDTH,
@@ -63,8 +65,9 @@ describe('ADVERTISING config', () => {
 describe('AD_SIDE_OFFSET placement', () => {
   const roadHalf = ROAD.width / 2;   // 4.05 m — the playable road edge
 
-  it('gantry is centred (offset 0)', () => {
-    expect(AD_SIDE_OFFSET['gantry']).toBe(0);
+  it('gantry billboards sit on the bank, not above the river', () => {
+    expect(AD_SIDE_OFFSET.gantry).toBeGreaterThan(AD_RIVER_EDGE_X);
+    expect(AD_SIDE_OFFSET.gantry).toBeLessThan(AD_BANK_OUTER_X);
   });
 
   it('every non-gantry format is placed beyond the road edge', () => {
@@ -109,10 +112,41 @@ describe('AD_SIDE_OFFSET placement', () => {
   it('the large printed hoarding keeps its roadward edge beyond traffic', () => {
     const xExtent = (AD_HOARDING_PANEL_WIDTH / 2) * Math.cos(AD_PLAYER_FACING_LEAN);
     expect(AD_SIDE_OFFSET.hoarding - xExtent).toBeGreaterThan(roadHalf);
+    expect(AD_SIDE_OFFSET.hoarding - xExtent).toBeGreaterThan(AD_RIVER_EDGE_X);
     expect(AD_HOARDING_PANEL_WIDTH / AD_HOARDING_PANEL_HEIGHT).toBeCloseTo(
       ADVERTISING.logoAspect,
       3,
     );
+  });
+
+  it('keeps every angled billboard fully on the grassy banks', () => {
+    const formats = [
+      'gantry',
+      'hoarding',
+      'building-board',
+      'shopfront-board',
+      'premium-install',
+    ] as const;
+    for (const format of formats) {
+      const panelWidths = {
+        gantry: 4.2,
+        hoarding: AD_HOARDING_PANEL_WIDTH,
+        'building-board': 1.52 * ADVERTISING.logoAspect,
+        'shopfront-board': ADVERTISING.logoAspect,
+        'premium-install': 1.6,
+      };
+      const halfPanelWidth = panelWidths[format] / 2;
+      const projectedHalfWidth =
+        halfPanelWidth * Math.cos(AD_PLAYER_FACING_LEAN);
+      expect(
+        AD_SIDE_OFFSET[format] - projectedHalfWidth,
+        format,
+      ).toBeGreaterThan(AD_RIVER_EDGE_X);
+      expect(
+        AD_SIDE_OFFSET[format] + projectedHalfWidth,
+        format,
+      ).toBeLessThan(AD_BANK_OUTER_X);
+    }
   });
 });
 
@@ -197,8 +231,8 @@ describe('logo aspect ratio', () => {
   const LOGO_RATIO = ADVERTISING.logoAspect; // 640/271
 
   it('gantry printed face uses a wide highway proportion', () => {
-    const panelW = 11.2;
-    const panelH = 4.8;
+    const panelW = 4.2;
+    const panelH = panelW * (271 / 640);
     expect(panelW / panelH).toBeGreaterThan(2.3);
     expect(panelW / panelH).toBeLessThan(2.4);
   });
@@ -299,43 +333,44 @@ describe('zone format tables', () => {
 // ─── Gantry geometry — standalone clearance ──────────────────────────────────
 
 describe('gantry standalone geometry', () => {
-  // The posts sit outside the road while the printed face fits between them.
-  const PILLAR_X        = 7.0;
+  // The posts and printed face fit within the grassy riverbank.
+  const PILLAR_X        = 2.5;
   const PILLAR_HALF_W   = 0.26 / 2;
-  const BUILDING_FACE_X = 11.2;
+  const GANTRY_PANEL_W  = 4.2;
+  const GANTRY_PILLAR_H = 8.6;
 
-  it('pillar outer face is inside the building front face', () => {
-    // Pillar outer edge = 7.13 m; building front face = 11.2 m.
+  it('pillar footprint stays between the river edge and bank outer edge', () => {
+    const innerEdge = AD_SIDE_OFFSET.gantry - (PILLAR_X + PILLAR_HALF_W);
     const pillarOuterEdge = PILLAR_X + PILLAR_HALF_W;
-    expect(pillarOuterEdge).toBeLessThan(BUILDING_FACE_X);
-  });
-
-  it('visible gap between pillar and building is at least 0.5 m', () => {
-    const gap = BUILDING_FACE_X - (PILLAR_X + PILLAR_HALF_W);
-    expect(gap).toBeGreaterThanOrEqual(0.5);
+    expect(innerEdge).toBeGreaterThan(AD_RIVER_EDGE_X);
+    expect(AD_SIDE_OFFSET.gantry + pillarOuterEdge).toBeLessThan(AD_BANK_OUTER_X);
   });
 
   it('pillar inner face does not enter the road collision zone', () => {
-    // Road half = 4.05 m; pillar inner edge = PILLAR_X - PILLAR_HALF_W = 6.82 m
-    const pillarInnerEdge = PILLAR_X - PILLAR_HALF_W;
-    expect(pillarInnerEdge).toBeGreaterThan(4.05);
+    const pillarInnerEdge =
+      AD_SIDE_OFFSET.gantry - (PILLAR_X - PILLAR_HALF_W);
+    expect(pillarInnerEdge).toBeGreaterThan(AD_RIVER_EDGE_X);
   });
 
   it('the printed face clears the 5.1 m camera eye', () => {
-    const cabinetBottom = 5.8;
+    const cabinetBottom =
+      GANTRY_PILLAR_H - 0.25 - GANTRY_PANEL_W * (271 / 640);
     const cameraEye     = 5.1;
     expect(cabinetBottom).toBeGreaterThan(cameraEye + 0.5);
   });
 
   it('the printed face fits between the gantry pillars', () => {
     const innerSpan = (PILLAR_X - PILLAR_HALF_W) * 2;
-    expect(11.2).toBeLessThan(innerSpan);
+    expect(GANTRY_PANEL_W).toBeLessThan(innerSpan);
   });
 
-  it('beam span is wider than the road', () => {
-    // Beam spans ±7.0 + 0.4 cantilever each side = ±7.4 → 14.8 m total
-    const beamHalfSpan = PILLAR_X + 0.4;
-    expect(beamHalfSpan * 2).toBeGreaterThan(8.1); // road width
+  it('beam span clears the face and remains within the bank', () => {
+    const beamHalfSpan =
+      (PILLAR_X + 0.3) * Math.cos(AD_PLAYER_FACING_LEAN) +
+      0.25 * Math.sin(AD_PLAYER_FACING_LEAN);
+    expect(beamHalfSpan * 2).toBeGreaterThan(GANTRY_PANEL_W);
+    expect(AD_SIDE_OFFSET.gantry - beamHalfSpan).toBeGreaterThan(AD_RIVER_EDGE_X);
+    expect(AD_SIDE_OFFSET.gantry + beamHalfSpan).toBeLessThan(AD_BANK_OUTER_X);
   });
 });
 

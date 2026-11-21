@@ -152,35 +152,25 @@ body {
 }
 
 .coin-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
+  display: block;
   width: 31px;
   height: 31px;
-  border: 1px solid rgba(255, 248, 203, 0.92);
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 34% 25%,
-    #fff8cc 0%,
-    #ffd957 34%,
-    #e8a51f 72%,
-    #9b5c08 100%
-  );
-  box-shadow:
-    inset 0 0 0 2px rgba(125, 75, 4, 0.45),
-    inset 0 0 0 4px rgba(255, 246, 189, 0.42),
-    0 2px 8px rgba(255, 196, 50, 0.28);
+  overflow: visible;
   flex: 0 0 auto;
+  filter: drop-shadow(0 2px 6px rgba(58, 194, 240, 0.48));
 }
 
-.coin-icon::after {
-  content: "";
-  position: absolute;
-  width: 9px;
-  height: 14px;
-  background: #9a5c08;
-  clip-path: polygon(52% 0, 100% 50%, 52% 100%, 0 50%);
-  filter: drop-shadow(0 1px 0 rgba(255, 249, 198, 0.7));
+.water-token-drop {
+  fill: url(#water-token-gradient);
+  stroke: rgba(224, 252, 255, 0.92);
+  stroke-width: 1.15;
+}
+
+.water-token-glint {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 1.7;
+  stroke-linecap: round;
 }
 
 .balance-copy {
@@ -671,9 +661,9 @@ body {
   text-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
 }
 
-/* ─── Punch button ─────────────────────────────────────────────────────────── */
+/* ─── Catch button ─────────────────────────────────────────────────────────── */
 
-.punch-area {
+.catch-area {
   position: relative;
   z-index: 1;
   display: flex;
@@ -685,7 +675,7 @@ body {
   pointer-events: none;
 }
 
-.punch-button {
+.catch-button {
   pointer-events: auto;
   position: relative;
   display: flex;
@@ -697,14 +687,15 @@ body {
   height: 72px;
   padding: 0;
   border-radius: 50%;
-  border: 2px solid rgba(255, 107, 107, 0.52);
+  border: 2px solid rgba(94, 225, 238, 0.68);
   background: radial-gradient(
     circle at 40% 32%,
-    rgba(60, 20, 20, 0.92),
-    rgba(20, 10, 10, 0.95)
+    rgba(21, 100, 112, 0.96),
+    rgba(7, 37, 57, 0.97)
   );
   box-shadow:
-    0 0 0 3px rgba(255, 80, 80, 0.14),
+    0 0 0 3px rgba(63, 225, 224, 0.2),
+    0 0 18px rgba(48, 203, 228, 0.22),
     0 12px 32px rgba(0, 0, 0, 0.44),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
   cursor: pointer;
@@ -717,39 +708,39 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.hud:not(.is-started) .punch-button {
+.hud:not(.is-started) .catch-button {
   opacity: 0;
   pointer-events: none;
 }
 
-.punch-button.is-ready {
-  border-color: rgba(255, 107, 107, 0.86);
+.catch-button.is-ready {
+  border-color: rgba(123, 250, 230, 0.96);
   box-shadow:
-    0 0 0 3px rgba(255, 80, 80, 0.26),
-    0 0 18px rgba(255, 80, 80, 0.22),
+    0 0 0 3px rgba(63, 225, 224, 0.3),
+    0 0 21px rgba(48, 203, 228, 0.3),
     0 12px 32px rgba(0, 0, 0, 0.44),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.punch-button:disabled {
+.catch-button:disabled {
   opacity: 0.78;
   cursor: default;
 }
 
-.punch-button:not(:disabled):active {
+.catch-button:not(:disabled):active {
   transform: scale(0.9);
   box-shadow:
-    0 0 0 3px rgba(255, 80, 80, 0.4),
+    0 0 0 3px rgba(63, 225, 224, 0.44),
     0 6px 16px rgba(0, 0, 0, 0.44),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-.punch-icon {
+.catch-icon {
   width: 26px;
   height: 26px;
   overflow: visible;
   fill: none;
-  stroke: #ffd6ca;
+  stroke: #e4ffff;
   stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -757,16 +748,16 @@ body {
   pointer-events: none;
 }
 
-.punch-label {
+.catch-label {
   font-size: 7px;
   font-weight: 900;
   letter-spacing: 0.18em;
-  color: rgba(255, 160, 160, 0.9);
+  color: rgba(166, 255, 239, 0.96);
   pointer-events: none;
 }
 
 /* SVG cooldown ring */
-.punch-cooldown-ring {
+.catch-cooldown-ring {
   position: absolute;
   inset: -3px;
   width: calc(100% + 6px);
@@ -776,15 +767,15 @@ body {
   overflow: visible;
 }
 
-.punch-cooldown-track {
+.catch-cooldown-track {
   fill: none;
   stroke: rgba(255, 255, 255, 0.08);
   stroke-width: 3;
 }
 
-.punch-cooldown-fill {
+.catch-cooldown-fill {
   fill: none;
-  stroke: rgba(255, 107, 107, 0.82);
+  stroke: rgba(105, 250, 229, 0.94);
   stroke-width: 3;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.05s linear;
@@ -799,28 +790,28 @@ body {
 }
 
 @media (max-width: 420px) {
-  .punch-button {
+  .catch-button {
     width: 64px;
     height: 64px;
   }
 
-  .punch-icon {
+  .catch-icon {
     width: 22px;
     height: 22px;
   }
 
-  .punch-label {
+  .catch-label {
     font-size: 6px;
   }
 }
 
 @media (min-width: 760px) {
-  .punch-button {
+  .catch-button {
     width: 80px;
     height: 80px;
   }
 
-  .punch-icon {
+  .catch-icon {
     width: 30px;
     height: 30px;
   }

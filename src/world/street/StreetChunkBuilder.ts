@@ -33,9 +33,15 @@ const SIDEWALK_INNER = ROAD_EDGE + 0.12;
 const SIDEWALK_OUTER = 7.36;
 const SIDEWALK_WIDTH = SIDEWALK_OUTER - SIDEWALK_INNER;
 const SIDEWALK_MID = (SIDEWALK_INNER + SIDEWALK_OUTER) / 2;
+export const RIVER_WIDTH = 17.6;
+const RIVER_HALF_WIDTH = RIVER_WIDTH / 2;
+const BANK_INNER = RIVER_HALF_WIDTH + 0.08;
+const BANK_OUTER = 14.5;
+const BANK_WIDTH = BANK_OUTER - BANK_INNER;
+const BANK_MID = (BANK_INNER + BANK_OUTER) / 2;
 const WALL_X = 10.6;
 const FRONT_X = 11.2;
-const SIDEWALK_TOP = 0.16;
+const SIDEWALK_TOP = 0.018;
 const LOT_COUNT = 4;
 const LOT_WIDTH = ROAD.chunkLength / LOT_COUNT;
 
@@ -50,9 +56,20 @@ const ROOF_COLORS = [0x8e5848, 0x796054, 0x6e7477, 0x9a624d, 0x7d6a58] as const;
 const TRIM_COLORS = [0xf2e9d8, 0xeee3ce, 0xdcd1bd, 0xf5efe2] as const;
 const DOOR_COLORS = [0x734b32, 0x315e60, 0x485a7a, 0x6c3e36, 0x84633c] as const;
 const GATE_COLORS = [0x3e4b4c, 0x5b3d33, 0x365b61, 0x6a5040] as const;
-const LEAF_COLORS = [0x4d843f, 0x3f7739, 0x67994c, 0x557f3b] as const;
+const LEAF_COLORS = [0x4d843f, 0x3f7739, 0x67994c, 0x557f3b, 0x6f9c4a] as const;
+const LEAF_SHADOWS = [0x2f5f33, 0x3a6b38, 0x35602f, 0x48793b] as const;
+const LEAF_HIGHLIGHTS = [0x86b45c, 0x9ac56a, 0x74a44e] as const;
+const FLOWER_COLORS = [0xe77a8a, 0xf2c14e, 0xf4efe6, 0xd88ad6, 0xe9a15a] as const;
+const VILLAGE_WALLS = [
+  0xf2e6ca, 0xecd9b5, 0xf0e1bf, 0xe7d3ad, 0xe3cba2, 0xefdcc0, 0xdcc9a8,
+  0xf3ead7, 0xead2ac, 0xe6d6b8,
+] as const;
+const TERRACOTTA = [
+  0xa65a3c, 0x9b5138, 0xb26543, 0x8f4a34, 0xaf6244, 0x7f4533,
+] as const;
 const VEHICLE_COLORS = [0x316f98, 0xb6493d, 0x5a8c55, 0xd2a23e, 0x6b6f7a] as const;
 const FABRIC_COLORS = [0xe26a48, 0x3d8b83, 0xd8a03f, 0x8e5a8e, 0xe8d9b4] as const;
+const CHUNK_WAVE = (Math.PI * 2) / ROAD.chunkLength;
 
 const SHOP_SIGNS = [
   SIGN_CELLS.kirana,
@@ -103,11 +120,11 @@ export class StreetChunkBuilder {
 
     this.addGround(context);
     yield 'ground';
-    this.addSidewalks(context, rng);
-    yield 'sidewalks';
-    yield* this.addMarkingsSteps(context);
-    this.addRoadWear(context, rng, theme);
-    yield 'road-wear';
+    yield* this.addRiverbanksSteps(context, rng);
+    if (variant % 3 === 1) {
+      this.addBridge(context, rng, -HALF + 11);
+      yield 'bridge';
+    }
 
     for (const side of [-1, 1] as const) {
       for (let lotIndex = 0; lotIndex < LOT_COUNT; lotIndex += 1) {
@@ -126,25 +143,10 @@ export class StreetChunkBuilder {
       }
     }
 
+    this.addDistantScenery(context, rng);
+    yield 'distant-scenery';
     this.addTrees(context, rng, theme);
     yield 'trees';
-    this.addUtilityLine(context, rng);
-    yield 'utility';
-    this.addStreetLamps(context, rng);
-    yield 'lamps';
-    this.addStreetSigns(context, rng);
-    yield 'signs';
-    this.addVehicles(context, rng, theme);
-    yield 'vehicles';
-    this.addStalls(context, rng, theme);
-    yield 'stalls';
-    this.addSmallProps(context, rng);
-    yield 'small-props';
-    this.addPedestrians(context, rng, theme);
-    yield 'pedestrians';
-    this.addThemeDressing(context, rng, variant, theme);
-    yield 'dressing';
-
     if (context.wires.length > 0) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute(
@@ -187,39 +189,548 @@ export class StreetChunkBuilder {
 
     const group = new THREE.Group();
     group.add(bakedCore, bakedDetail, bakedFar);
-    return { group, core: bakedCore, detail: bakedDetail, far: bakedFar };
+    return {
+      group,
+      core: bakedCore,
+      detail: bakedDetail,
+      far: bakedFar,
+    };
   }
 
   private addGround(context: BuildContext): void {
-    const ground = this.plane(this.materials.dirt, 110, ROAD.chunkLength, 8, 8);
+    const ground = this.plane(this.materials.grass, 110, ROAD.chunkLength, 8, 8);
     ground.position.y = -0.065;
     ground.receiveShadow = true;
     context.core.add(ground);
 
-    const road = this.plane(
-      this.materials.asphalt,
-      ROAD.width,
-      ROAD.chunkLength,
-      5.5,
-      ROAD.chunkLength,
+  }
+
+  private bankRise(absX: number, z: number): number {
+    const t = Math.min(
+      1,
+      Math.max(0, (absX - BANK_INNER) / (BANK_OUTER - BANK_INNER)),
     );
-    road.position.y = 0.005;
-    road.receiveShadow = true;
-    context.core.add(road);
+    const rise = Math.sin(t * Math.PI) * 0.19 + Math.pow(t, 0.72) * 0.035;
+    const noise =
+      Math.sin(z * CHUNK_WAVE * 2 + absX * 0.55) * 0.026 +
+      Math.sin(z * CHUNK_WAVE * 3 - absX * 0.85 + 1.7) * 0.015 +
+      Math.sin(z * CHUNK_WAVE * 5 + absX * 1.4 + 0.4) * 0.008;
+    return Math.max(0, rise + noise * (0.4 + t * 0.6));
+  }
+
+  private bankHeight(absX: number, z: number): number {
+    const t = Math.min(
+      1,
+      Math.max(0, (absX - BANK_INNER) / (BANK_OUTER - BANK_INNER)),
+    );
+    let y = this.bankRise(absX, z);
+    if (t > 0.8) {
+      const blend = (t - 0.8) / 0.2;
+      y = y * (1 - blend * blend) - 0.072 * blend * blend;
+    }
+    return y;
+  }
+
+  private shoreX(z: number, side: Side): number {
+    return (
+      BANK_INNER -
+      0.26 +
+      Math.sin(z * CHUNK_WAVE * 2 + side * 1.1) * 0.2 +
+      Math.sin(z * CHUNK_WAVE * 3 - side * 0.6) * 0.1 +
+      Math.sin(z * CHUNK_WAVE * 5 + side * 2.3) * 0.045
+    );
+  }
+
+  private *addRiverbanksSteps(
+    context: BuildContext,
+    rng: Rng,
+  ): Generator<string, void, void> {
+    for (const side of [-1, 1] as const) {
+      const cols = 12;
+      const rows = 24;
+      const positions: number[] = [];
+      const colors: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      for (let row = 0; row <= rows; row += 1) {
+        const z = -HALF + (row / rows) * ROAD.chunkLength;
+        const inner = this.shoreX(z, side);
+        const outer =
+          BANK_OUTER +
+          0.32 +
+          Math.sin(z * CHUNK_WAVE * 2 + side * 2.1) * 0.16;
+        for (let col = 0; col <= cols; col += 1) {
+          const t = col / cols;
+          const absX = inner + (outer - inner) * t;
+          const y = this.bankHeight(absX, z);
+          positions.push(side * absX, y, z);
+          uvs.push(absX / 2.4, z / 2.4);
+          const shade =
+            0.84 +
+            0.1 * (0.5 + 0.5 * Math.sin(absX * 2.1 + z * 1.3 + side));
+          const damp = 0.82 + Math.min(1, t * 1.5) * 0.18;
+          colors.push(
+            shade * damp * 1.02,
+            shade * damp * 1.03,
+            shade * damp * 0.84,
+          );
+        }
+      }
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const a = row * (cols + 1) + col;
+          const b = a + 1;
+          const c = a + cols + 1;
+          const d = c + 1;
+          if (side === 1) {
+            indices.push(a, c, b, b, c, d);
+          } else {
+            indices.push(a, b, c, b, d, c);
+          }
+        }
+      }
+
+      const bankGeometry = new THREE.BufferGeometry();
+      bankGeometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(positions, 3),
+      );
+      bankGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      bankGeometry.setAttribute(
+        'color',
+        new THREE.Float32BufferAttribute(colors, 3),
+      );
+      bankGeometry.setIndex(indices);
+      bankGeometry.computeVertexNormals();
+      const bank = new THREE.Mesh(bankGeometry, this.materials.grass);
+      bank.receiveShadow = true;
+      bank.castShadow = false;
+      context.core.add(bank);
+      yield 'riverbank-shape';
+
+      const stripRows = 24;
+      const stripCols = 2;
+      const stripPositions: number[] = [];
+      const stripColors: number[] = [];
+      const stripUvs: number[] = [];
+      const stripIndices: number[] = [];
+      for (let row = 0; row <= stripRows; row += 1) {
+        const z = -HALF + (row / stripRows) * ROAD.chunkLength;
+        const edge = this.shoreX(z, side);
+        for (let col = 0; col <= stripCols; col += 1) {
+          const t = col / stripCols;
+          const absX = edge - 0.3 + t * 0.95;
+          const y =
+            Math.max(this.bankHeight(absX, z) + 0.018, 0.02) +
+            Math.sin(z * CHUNK_WAVE * 7 + col * 1.7) * 0.005;
+          stripPositions.push(side * absX, y, z);
+          stripUvs.push(absX / 1.5, z / 1.5);
+          const tint = 0.78 + t * 0.18;
+          stripColors.push(tint, tint * 0.9, tint * 0.72);
+        }
+      }
+      for (let row = 0; row < stripRows; row += 1) {
+        for (let col = 0; col < stripCols; col += 1) {
+          const a = row * (stripCols + 1) + col;
+          const b = a + 1;
+          const c = a + stripCols + 1;
+          const d = c + 1;
+          if (side === 1) {
+            stripIndices.push(a, c, b, b, c, d);
+          } else {
+            stripIndices.push(a, b, c, b, d, c);
+          }
+        }
+      }
+      const stripGeometry = new THREE.BufferGeometry();
+      stripGeometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(stripPositions, 3),
+      );
+      stripGeometry.setAttribute(
+        'uv',
+        new THREE.Float32BufferAttribute(stripUvs, 2),
+      );
+      stripGeometry.setAttribute(
+        'color',
+        new THREE.Float32BufferAttribute(stripColors, 3),
+      );
+      stripGeometry.setIndex(stripIndices);
+      stripGeometry.computeVertexNormals();
+      const shoreStrip = new THREE.Mesh(stripGeometry, this.materials.shore);
+      shoreStrip.receiveShadow = true;
+      shoreStrip.castShadow = false;
+      context.core.add(shoreStrip);
+      yield 'shoreline-strip';
+
+      const fenceX = BANK_OUTER - 0.32;
+      if (rng.chance(0.45)) {
+        const postZs: number[] = [];
+        for (let post = 0; post <= 9; post += 1) {
+          postZs.push(-HALF + 2.4 + post * 4.8 + rng.range(-0.14, 0.14));
+        }
+        for (let post = 0; post < postZs.length; post += 1) {
+          const z = postZs[post];
+          const baseY = this.bankHeight(fenceX, z);
+          this.box(
+            context.core,
+            this.materials.wood,
+            post % 2 === 0 ? 0x795335 : 0x916b43,
+            0.14,
+            0.86,
+            0.14,
+            side * fenceX,
+            baseY + 0.4,
+            z,
+            { cast: false, receive: true, tile: 0 },
+          );
+          if (post < postZs.length - 1) {
+            const nextZ = postZs[post + 1];
+            const railZ = (z + nextZ) / 2;
+            const railLength = nextZ - z - 0.12;
+            const railBase = (baseY + this.bankHeight(fenceX, nextZ)) / 2;
+            for (const offset of [0.3, 0.6]) {
+              this.box(
+                context.core,
+                this.materials.wood,
+                0x987044,
+                0.09,
+                0.09,
+                railLength,
+                side * fenceX,
+                railBase + offset,
+                railZ,
+                { cast: false, receive: true, tile: 0 },
+              );
+            }
+          }
+        }
+        yield 'riverbank-fence';
+      }
+
+      for (let cluster = 0; cluster < 5; cluster += 1) {
+        const clusterZ = rng.range(-HALF + 1, HALF - 1);
+        for (let rock = 0; rock < rng.int(2, 4); rock += 1) {
+          const size = rng.range(0.18, 0.62);
+          const absX = rng.range(
+            RIVER_HALF_WIDTH + 0.02,
+            RIVER_HALF_WIDTH + 0.9,
+          );
+          this.sphere(
+            context.core,
+            this.materials.concrete,
+            rng.pick([0x9b8b73, 0xb19d7e, 0x857a69, 0xc3aa82] as const),
+            size,
+            7,
+            5,
+            side * absX,
+            0.02 + size * 0.22,
+            clusterZ + rng.range(-0.7, 0.7),
+            { scaleY: rng.range(0.45, 0.75), cast: false, receive: true },
+          );
+        }
+        if (cluster % 2 === 0) yield 'riverbank-rocks';
+      }
+
+      for (let pebble = 0; pebble < 16; pebble += 1) {
+        const size = rng.range(0.05, 0.16);
+        const absX = rng.range(RIVER_HALF_WIDTH - 0.1, BANK_INNER + 0.85);
+        const z = rng.range(-HALF, HALF);
+        this.sphere(
+          context.core,
+          this.materials.concrete,
+          rng.pick([0x9a8d78, 0xb0a186, 0x8b8172] as const),
+          size,
+          6,
+          4,
+          side * absX,
+          Math.max(0.02, this.bankHeight(absX, z) * 0.5) + size * 0.4,
+          z,
+          { scaleY: 0.5, cast: false, receive: true },
+        );
+      }
+
+      for (let clump = 0; clump < 20; clump += 1) {
+        const absX = rng.range(BANK_INNER + 0.15, BANK_OUTER - 0.5);
+        const z = rng.range(-HALF, HALF);
+        const baseY = this.bankHeight(absX, z);
+        const height = rng.range(0.3, 0.78);
+        for (let blade = 0; blade < 4; blade += 1) {
+          this.box(
+            context.core,
+            this.materials.foliage,
+            rng.pick([0x78a94b, 0x91b85a, 0x4f8d48, 0xb2bd5d] as const),
+            0.07,
+            height * rng.range(0.6, 1),
+            0.055,
+            side * (absX + rng.range(-0.14, 0.14)),
+            baseY + height * 0.4,
+            z + rng.range(-0.14, 0.14),
+            { cast: false, receive: false, tile: 0, rotZ: rng.range(-0.3, 0.3) },
+          );
+        }
+        if (clump % 5 === 4) yield 'riverbank-grass';
+      }
+
+      for (let flower = 0; flower < 5; flower += 1) {
+        const absX = rng.range(BANK_INNER + 0.9, BANK_OUTER - 0.7);
+        const z = rng.range(-HALF, HALF);
+        const baseY = this.bankHeight(absX, z);
+        const height = rng.range(0.35, 0.62);
+        this.cylinder(
+          context.core,
+          this.materials.foliage,
+          0x5d8a45,
+          0.014,
+          0.022,
+          height,
+          5,
+          side * absX,
+          baseY + height / 2,
+          z,
+          { cast: false, receive: false },
+        );
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick([0xe77a8a, 0xf2c14e, 0xf4efe6, 0xd88ad6, 0xe9a15a] as const),
+          rng.range(0.08, 0.13),
+          7,
+          5,
+          side * absX,
+          baseY + height + 0.04,
+          z,
+          { cast: false, receive: false, scaleY: 0.8 },
+        );
+      }
+
+      for (let bush = 0; bush < 4; bush += 1) {
+        const absX = rng.range(BANK_INNER + 1.6, BANK_OUTER - 0.6);
+        const z = rng.range(-HALF, HALF);
+        const baseY = this.bankHeight(absX, z);
+        const radius = rng.range(0.42, 0.72);
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick(LEAF_COLORS),
+          radius,
+          8,
+          6,
+          side * absX,
+          baseY + radius * 0.62,
+          z,
+          { scaleY: 0.82, cast: true, receive: true },
+        );
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick(LEAF_HIGHLIGHTS),
+          radius * 0.62,
+          7,
+          5,
+          side * (absX + rng.range(-0.45, 0.45)),
+          baseY + radius * 0.95,
+          z + rng.range(-0.45, 0.45),
+          { scaleY: 0.85, cast: false, receive: true },
+        );
+      }
+
+      for (let pad = 0; pad < 5; pad += 1) {
+        const radius = rng.range(0.16, 0.34);
+        this.cylinder(
+          context.core,
+          this.materials.foliage,
+          rng.pick([0x3f6b3a, 0x517d3f, 0x5f8c47] as const),
+          radius,
+          radius * 0.95,
+          0.018,
+          8,
+          side * rng.range(RIVER_HALF_WIDTH - 1.5, RIVER_HALF_WIDTH - 0.3),
+          0.05,
+          rng.range(-HALF, HALF),
+          { cast: false, receive: false },
+        );
+      }
+      yield 'riverbank-vegetation';
+    }
+  }
+
+  private addBridge(context: BuildContext, rng: Rng, z: number): void {
+    const span = RIVER_HALF_WIDTH * 2 + 2.6;
+    const deckY = 6.6;
+    const deckDepth = 3.0;
+    const stoneColors = [0x9c9184, 0x8c8378, 0xa89c8b] as const;
 
     for (const side of [-1, 1] as const) {
+      const abutmentX = side * (RIVER_HALF_WIDTH + 0.65);
       this.box(
         context.core,
         this.materials.concrete,
-        0x676b67,
-        0.2,
-        0.012,
-        ROAD.chunkLength,
-        side * (ROAD_EDGE - 0.08),
-        0.012,
-        0,
-        { cast: false, receive: true, tile: 0 },
+        rng.pick(stoneColors),
+        1.5,
+        deckY,
+        deckDepth + 0.9,
+        abutmentX,
+        deckY / 2 - 0.05,
+        z,
+        { cast: true, receive: true, tile: 1.2 },
       );
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xb0a391,
+        1.9,
+        0.3,
+        deckDepth + 1.2,
+        abutmentX,
+        deckY - 0.18,
+        z,
+        { cast: false, receive: true, tile: 1.2 },
+      );
+    }
+
+    for (const side of [-1, 1] as const) {
+      const pierX = side * 5.5;
+      this.cylinder(
+        context.core,
+        this.materials.concrete,
+        rng.pick(stoneColors),
+        0.62,
+        0.78,
+        deckY - 0.45,
+        8,
+        pierX,
+        (deckY - 0.45) / 2,
+        z,
+        { cast: true, receive: true },
+      );
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xa79a88,
+        1.3,
+        0.35,
+        deckDepth + 0.4,
+        pierX,
+        0.18,
+        z,
+        { cast: false, receive: true, tile: 1.1 },
+      );
+    }
+
+    const archSegments = 10;
+    const archSpan = 11.0;
+    for (let segment = 0; segment < archSegments; segment += 1) {
+      const t0 = segment / archSegments;
+      const t1 = (segment + 1) / archSegments;
+      const tm = (t0 + t1) / 2;
+      const y0 = deckY - 1.95 + Math.sin(t0 * Math.PI) * 1.5;
+      const y1 = deckY - 1.95 + Math.sin(t1 * Math.PI) * 1.5;
+      const x0 = -archSpan / 2 + t0 * archSpan;
+      const x1 = -archSpan / 2 + t1 * archSpan;
+      const angle = Math.atan2(y1 - y0, x1 - x0);
+      this.box(
+        context.core,
+        this.materials.concrete,
+        rng.pick(stoneColors),
+        Math.hypot(x1 - x0, y1 - y0) + 0.08,
+        0.44,
+        deckDepth - 0.25,
+        (x0 + x1) / 2,
+        (y0 + y1) / 2,
+        z,
+        { cast: false, receive: true, tile: 0, rotZ: angle },
+      );
+      if (segment === 4 || segment === 5) {
+        this.box(
+          context.core,
+          this.materials.concrete,
+          0xb6aa97,
+          0.42,
+          0.55,
+          deckDepth - 0.15,
+          (x0 + x1) / 2,
+          Math.max(y0, y1) + 0.3 * Math.sin(tm * Math.PI),
+          z,
+          { cast: false, receive: true, tile: 0, rotZ: angle },
+        );
+      }
+    }
+
+    this.box(
+      context.core,
+      this.materials.wood,
+      0x8c6540,
+      span,
+      0.22,
+      deckDepth,
+      0,
+      deckY,
+      z,
+      { cast: true, receive: true, tile: 0.8 },
+    );
+
+    for (let plank = -6; plank <= 6; plank += 1) {
+      this.box(
+        context.core,
+        this.materials.wood,
+        plank % 2 === 0 ? 0xb18858 : 0x9a744b,
+        span - 0.35,
+        0.04,
+        0.2,
+        0,
+        deckY + 0.13,
+        z + plank * 0.22,
+        { cast: false, receive: false, tile: 0 },
+      );
+    }
+
+    for (const side of [-1, 1] as const) {
+      const railX = side * (span / 2 - 0.22);
+      for (const postZ of [-1.1, -0.37, 0.37, 1.1]) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x765638,
+          0.16,
+          1.02,
+          0.16,
+          railX,
+          deckY + 0.58,
+          z + postZ,
+          { cast: false, receive: true, tile: 0 },
+        );
+      }
+      for (const railY of [deckY + 0.5, deckY + 0.94]) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x5e4936,
+          0.1,
+          0.1,
+          deckDepth - 0.18,
+          railX,
+          railY,
+          z,
+          { cast: false, receive: true, tile: 0 },
+        );
+      }
+      for (const postZ of [-1, 1]) {
+        this.box(
+          context.core,
+          this.materials.concrete,
+          0xa79a88,
+          0.38,
+          1.35,
+          0.38,
+          railX,
+          deckY + 0.58,
+          z + postZ * (deckDepth / 2 - 0.16),
+          { cast: false, receive: true, tile: 1 },
+        );
+      }
     }
   }
 
@@ -505,99 +1016,915 @@ export class StreetChunkBuilder {
     theme: ZoneTheme,
   ): Generator<string, void, void> {
     const centerZ = (startZ + endZ) / 2;
-    const templeLot =
-      side === 1 &&
-      ((theme.id === 'temple' && lotIndex === variant % LOT_COUNT) ||
-        (theme.id === 'residential' &&
-          (variant === 5 || variant === 7) &&
-          lotIndex === (variant + 1) % LOT_COUNT));
-
-    if (theme.id === 'construction') {
-      yield* this.addConstructionLotSteps(
+    const hasHouse = rng.chance(0.82);
+    if (hasHouse) {
+      this.addRiversideHouse(
         context,
         rng,
         side,
-        startZ,
-        endZ,
-        lotIndex,
-        variant,
+        centerZ + rng.range(-1.6, 1.6),
       );
-      return;
+    }
+    if (rng.chance(0.48)) {
+      this.addRiversideHouse(
+        context,
+        rng,
+        side,
+        centerZ + rng.range(-2.4, 2.4),
+        { background: true },
+      );
+    } else if (!hasHouse) {
+      this.addGardenPlot(context, rng, side, centerZ);
     }
 
-    const openChance =
-      theme.id === 'residential'
-        ? 0.24
-        : theme.id === 'outskirts'
-          ? 0.36
-          : theme.id === 'market'
-            ? 0.1
-            : theme.id === 'traffic'
-              ? 0.12
-              : 0.14;
-    const openFrontage = !templeLot && rng.chance(openChance);
-    const shop =
-      !templeLot &&
-      !openFrontage &&
-      rng.chance(theme.dressing.shopChance) &&
-      (lotIndex === 1 || lotIndex === 2 || rng.chance(0.6));
+    for (let clump = 0; clump < 3; clump += 1) {
+      this.addReeds(
+        context,
+        rng,
+        side * rng.range(RIVER_HALF_WIDTH + 0.3, RIVER_HALF_WIDTH + 1.8),
+        rng.range(startZ + 0.5, endZ - 0.5),
+      );
+    }
 
-    this.addCompoundWall(
-      context,
-      rng,
-      side,
-      startZ,
-      endZ,
-      templeLot,
-      openFrontage,
+    for (let flower = 0; flower < 2; flower += 1) {
+      const absX = rng.range(BANK_INNER + 0.4, BANK_OUTER - 1);
+      const z = rng.range(startZ + 0.6, endZ - 0.6);
+      const baseY = this.bankHeight(absX, z);
+      const height = rng.range(0.32, 0.55);
+      this.cylinder(
+        context.core,
+        this.materials.foliage,
+        0x5d8a45,
+        0.013,
+        0.02,
+        height,
+        5,
+        side * absX,
+        baseY + height / 2,
+        z,
+        { cast: false, receive: false },
+      );
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(FLOWER_COLORS),
+        rng.range(0.09, 0.14),
+        7,
+        5,
+        side * absX,
+        baseY + height,
+        z,
+        { cast: false, receive: false, scaleY: 0.8 },
+      );
+    }
+
+    if ((lotIndex + variant) % 2 === 0 && rng.chance(0.6)) {
+      const absX = rng.range(RIVER_HALF_WIDTH + 2.5, BANK_OUTER - 0.7);
+      const shrubZ = rng.range(startZ + 1, endZ - 1);
+      const baseY = this.bankHeight(absX, shrubZ);
+      const radius = rng.range(0.45, 0.78);
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(LEAF_COLORS),
+        radius,
+        8,
+        6,
+        side * absX,
+        baseY + radius * 0.55,
+        shrubZ,
+        { scaleY: 0.72, cast: true, receive: true },
+      );
+    }
+
+    yield 'riverside-lot';
+  }
+
+  private gableRoof(
+    parent: THREE.Object3D,
+    roofColor: number,
+    gableColor: number,
+    width: number,
+    depth: number,
+    height: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
+    const halfW = width / 2;
+    const halfD = depth / 2;
+    const roofGeometry = new THREE.BufferGeometry();
+    roofGeometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [
+          -halfW, 0, -halfD,
+          -halfW, 0, halfD,
+          0, height, -halfD,
+          0, height, halfD,
+          halfW, 0, -halfD,
+          halfW, 0, halfD,
+        ],
+        3,
+      ),
     );
-    yield 'lot-wall';
+    roofGeometry.setAttribute(
+      'uv',
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1],
+        2,
+      ),
+    );
+    roofGeometry.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4]);
+    setVertexColor(roofGeometry, roofColor);
+    roofGeometry.computeVertexNormals();
+    const roof = new THREE.Mesh(roofGeometry, this.materials.roof);
+    roof.position.set(x, y, z);
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    parent.add(roof);
 
-    if (templeLot) {
-      this.addTemple(context, rng, side, centerZ);
-      yield 'lot-temple';
-      return;
-    }
+    const gableGeometry = new THREE.BufferGeometry();
+    gableGeometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [
+          -halfW, 0, -halfD,
+          0, height, -halfD,
+          halfW, 0, -halfD,
+          -halfW, 0, halfD,
+          halfW, 0, halfD,
+          0, height, halfD,
+        ],
+        3,
+      ),
+    );
+    gableGeometry.setAttribute(
+      'uv',
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0.5, 1, 1, 0, 0, 0, 1, 0, 0.5, 1],
+        2,
+      ),
+    );
+    gableGeometry.setIndex([0, 1, 2, 3, 4, 5]);
+    setVertexColor(gableGeometry, gableColor);
+    gableGeometry.computeVertexNormals();
+    const gable = new THREE.Mesh(gableGeometry, this.materials.plaster);
+    gable.position.set(x, y, z);
+    gable.castShadow = true;
+    gable.receiveShadow = true;
+    parent.add(gable);
 
-    if (openFrontage) {
-      this.addForecourt(context, rng, side, centerZ);
-      yield 'lot-forecourt';
-      if (rng.chance(0.55)) {
-        this.addRearBuilding(context, rng, side, centerZ);
-      }
-      yield 'lot-rear';
-      if (rng.chance(0.4)) {
-        this.addGarden(context, rng, side, centerZ + rng.range(-2.2, 2.2));
-      }
-      yield 'lot-garden';
-      return;
-    }
+    const ridgeColor = new THREE.Color(roofColor)
+      .multiplyScalar(0.72)
+      .getHex();
+    this.box(
+      parent,
+      this.materials.roof,
+      ridgeColor,
+      0.2,
+      0.13,
+      depth + 0.06,
+      x,
+      y + height - 0.02,
+      z,
+      { cast: false, receive: true, tile: 0 },
+    );
+  }
 
-    yield* this.addBuildingSteps(context, rng, side, centerZ, shop);
-    if (shop) this.addShopDisplay(context, rng, side, centerZ);
-    yield 'lot-shop';
-    if (rng.chance(theme.id === 'market' ? 0.4 : 0.55)) {
-      this.addRearBuilding(context, rng, side, centerZ);
-    }
-    yield 'lot-rear';
-
-    const gardenChance =
-      theme.id === 'residential'
-        ? 0.62
-        : theme.id === 'outskirts'
-          ? 0.46
-          : theme.id === 'temple'
-            ? 0.22
-            : 0;
-    if (gardenChance > 0 && rng.chance(gardenChance)) {
-      this.addGarden(
-        context,
-        rng,
-        side,
-        centerZ + rng.range(-2.6, 2.6),
+  private addGardenPlot(
+    context: BuildContext,
+    rng: Rng,
+    side: Side,
+    z: number,
+  ): void {
+    const baseX = BANK_OUTER + 0.7;
+    for (let bush = 0; bush < 5; bush += 1) {
+      const absX = rng.range(baseX, baseX + 3.2);
+      const bz = z + rng.range(-3.6, 3.6);
+      const radius = rng.range(0.4, 0.7);
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(LEAF_COLORS),
+        radius,
+        8,
+        6,
+        side * absX,
+        this.bankHeight(absX, bz) + radius * 0.6,
+        bz,
+        { scaleY: 0.85, cast: true, receive: true },
       );
     }
-    yield 'lot-garden';
+    for (let flower = 0; flower < 4; flower += 1) {
+      const absX = rng.range(baseX, baseX + 3);
+      const fz = z + rng.range(-3.4, 3.4);
+      const baseY = this.bankHeight(absX, fz);
+      const height = rng.range(0.32, 0.55);
+      this.cylinder(
+        context.core,
+        this.materials.foliage,
+        0x5d8a45,
+        0.013,
+        0.02,
+        height,
+        5,
+        side * absX,
+        baseY + height / 2,
+        fz,
+        { cast: false, receive: false },
+      );
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(FLOWER_COLORS),
+        rng.range(0.08, 0.14),
+        7,
+        5,
+        side * absX,
+        baseY + height,
+        fz,
+        { cast: false, receive: false, scaleY: 0.8 },
+      );
+    }
+    for (let stone = 0; stone < 4; stone += 1) {
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xbcae97,
+        0.55,
+        0.04,
+        0.45,
+        side * (BANK_OUTER + 0.4 + stone * 0.62),
+        -0.045,
+        z + rng.range(-0.35, 0.35),
+        { cast: false, receive: true, tile: 1 },
+      );
+    }
+  }
+
+  private addRiversideHouse(
+    context: BuildContext,
+    rng: Rng,
+    side: Side,
+    z: number,
+    options: { background?: boolean } = {},
+  ): void {
+    const background = options.background ?? false;
+    const width = rng.range(3.5, 4.8);
+    const depth = rng.range(3.6, 5);
+    const groundH = rng.range(2.3, 2.75);
+    const twoStorey = !background && rng.chance(0.18);
+    const upperH = twoStorey ? rng.range(2.1, 2.45) : 0;
+    const wallH = groundH + upperH;
+    const wallColor = rng.pick(VILLAGE_WALLS);
+    const trimColor = rng.pick(TRIM_COLORS);
+    const roofColor = rng.pick(TERRACOTTA);
+    const setback = background ? rng.range(7.2, 9.2) : rng.range(0.9, 1.9);
+    const riverFaceX = side * (BANK_OUTER + setback);
+    const centerX = riverFaceX + side * (width / 2);
+    const plinthH = 0.3;
+    const base = plinthH - 0.02;
+    const windowOffset = Math.min(1.35, depth / 2 - 0.62);
+
+    this.box(
+      context.core,
+      this.materials.plaster,
+      wallColor,
+      width + 0.28,
+      plinthH + 0.06,
+      depth + 0.28,
+      centerX,
+      plinthH / 2 - 0.045,
+      z,
+      { cast: true, receive: true, tile: 0.9 },
+    );
+
+    this.box(
+      context.core,
+      this.materials.plaster,
+      wallColor,
+      width,
+      wallH,
+      depth,
+      centerX,
+      base + wallH / 2,
+      z,
+      { cast: true, receive: true, tile: 1 },
+    );
+
+    if (twoStorey) {
+      this.box(
+        context.core,
+        this.materials.concrete,
+        trimColor,
+        width + 0.14,
+        0.13,
+        depth + 0.14,
+        centerX,
+        base + groundH,
+        z,
+        { cast: false, receive: true, tile: 1 },
+      );
+    }
+
+    const roofH = width * 0.3 + 0.18;
+    this.gableRoof(
+      context.core,
+      roofColor,
+      wallColor,
+      width + 0.7,
+      depth + 0.8,
+      roofH,
+      centerX,
+      base + wallH,
+      z,
+    );
+
+    if (rng.chance(0.5)) {
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0x9b8f80,
+        0.28,
+        0.9,
+        0.28,
+        centerX + side * width * 0.18,
+        base + wallH + roofH * 0.5,
+        z + depth * 0.2,
+        { cast: true, receive: true, tile: 1 },
+      );
+    }
+
+    const doorHeight = 1.55;
+    const doorX = riverFaceX - side * 0.045;
+    this.box(
+      context.core,
+      this.materials.wood,
+      rng.pick(DOOR_COLORS),
+      0.09,
+      doorHeight,
+      0.7,
+      doorX,
+      base + doorHeight / 2,
+      z,
+      { cast: false, receive: true, tile: 0 },
+    );
+    for (const offset of [-0.43, 0.43]) {
+      this.box(
+        context.core,
+        this.materials.plaster,
+        trimColor,
+        0.14,
+        doorHeight + 0.16,
+        0.11,
+        doorX,
+        base + doorHeight / 2,
+        z + offset,
+        { cast: false, receive: true, tile: 0 },
+      );
+    }
+    this.box(
+      context.core,
+      this.materials.plaster,
+      trimColor,
+      0.14,
+      0.14,
+      0.98,
+      doorX,
+      base + doorHeight + 0.08,
+      z,
+      { cast: false, receive: true, tile: 0 },
+    );
+    this.sphere(
+      context.core,
+      this.materials.metal,
+      0xb08d54,
+      0.035,
+      6,
+      4,
+      doorX - side * 0.05,
+      base + 0.95,
+      z + 0.2,
+      { cast: false, receive: false },
+    );
+
+    const hasVeranda = !background && rng.chance(0.62);
+    if (hasVeranda) {
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xbcae97,
+        0.42,
+        0.16,
+        1.1,
+        riverFaceX - side * 1.42,
+        0.08,
+        z,
+        { cast: false, receive: true, tile: 1 },
+      );
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xb0a28b,
+        0.42,
+        0.16,
+        1.2,
+        riverFaceX - side * 1.78,
+        -0.02,
+        z,
+        { cast: false, receive: true, tile: 1 },
+      );
+    } else {
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xbcae97,
+        0.42,
+        0.18,
+        1.1,
+        riverFaceX - side * 0.36,
+        0.19,
+        z,
+        { cast: false, receive: true, tile: 1 },
+      );
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xb0a28b,
+        0.42,
+        0.18,
+        1.2,
+        riverFaceX - side * 0.76,
+        0.02,
+        z,
+        { cast: false, receive: true, tile: 1 },
+      );
+    }
+
+    if (!background) {
+      this.box(
+        context.core,
+        this.materials.roof,
+        roofColor,
+        0.95,
+        0.08,
+        1.3,
+        riverFaceX - side * 0.4,
+        base + doorHeight + 0.34,
+        z,
+        { cast: false, receive: false, rotZ: side * 0.16, tile: 0.8 },
+      );
+      for (const offset of [-0.5, 0.5]) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x765638,
+          0.06,
+          0.3,
+          0.06,
+          riverFaceX - side * 0.78,
+          base + doorHeight + 0.16,
+          z + offset,
+          { cast: false, receive: false, tile: 0 },
+        );
+      }
+    }
+
+    const paneColors = [0x6ea6ab, 0x87b3bb, 0x9cc3b8, 0x7d9fb8] as const;
+    const addWindow = (
+      wy: number,
+      wz: number,
+      paneColor: number,
+      shutters: boolean,
+      flowers: boolean,
+    ): void => {
+      const wx = riverFaceX - side * 0.02;
+      this.box(
+        context.core,
+        this.materials.plaster,
+        trimColor,
+        0.1,
+        0.9,
+        0.88,
+        wx,
+        wy,
+        wz,
+        { cast: false, receive: true, tile: 0 },
+      );
+      this.box(
+        context.core,
+        this.materials.glass,
+        paneColor,
+        0.06,
+        0.66,
+        0.7,
+        riverFaceX - side * 0.055,
+        wy,
+        wz,
+        { cast: false, receive: false, tile: 0 },
+      );
+      this.box(
+        context.core,
+        this.materials.concrete,
+        0xd8cdb9,
+        0.2,
+        0.08,
+        0.96,
+        riverFaceX - side * 0.06,
+        wy - 0.48,
+        wz,
+        { cast: false, receive: true, tile: 0 },
+      );
+      this.box(
+        context.core,
+        this.materials.wood,
+        0x8c6540,
+        0.08,
+        0.66,
+        0.05,
+        riverFaceX - side * 0.07,
+        wy,
+        wz,
+        { cast: false, receive: false, tile: 0 },
+      );
+      if (shutters) {
+        for (const dir of [-1, 1] as const) {
+          this.box(
+            context.core,
+            this.materials.wood,
+            rng.pick([0x5b4636, 0x6c4f39, 0x46605c] as const),
+            0.045,
+            0.86,
+            0.32,
+            riverFaceX - side * 0.045,
+            wy,
+            wz + dir * 0.6,
+            { cast: false, receive: true, tile: 0, rotY: dir * 0.16 },
+          );
+        }
+      }
+      if (flowers) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x8a5a38,
+          0.24,
+          0.16,
+          0.76,
+          riverFaceX - side * 0.16,
+          wy - 0.62,
+          wz,
+          { cast: false, receive: true, tile: 0 },
+        );
+        for (let flower = 0; flower < 3; flower += 1) {
+          this.sphere(
+            context.core,
+            this.materials.foliage,
+            rng.pick(FLOWER_COLORS),
+            0.07,
+            6,
+            4,
+            riverFaceX - side * 0.18,
+            wy - 0.5,
+            wz + (flower - 1) * 0.2,
+            { cast: false, receive: false, scaleY: 0.8 },
+          );
+        }
+      }
+    };
+
+    const windowY = base + 1.5;
+    addWindow(windowY, z - windowOffset, rng.pick(paneColors), rng.chance(0.5), !background && rng.chance(0.5));
+    addWindow(windowY, z + windowOffset, rng.pick(paneColors), rng.chance(0.5), !background && rng.chance(0.5));
+    if (twoStorey) {
+      const upperY = base + groundH + 1.3;
+      addWindow(upperY, z - windowOffset * 0.85, rng.pick(paneColors), true, false);
+      addWindow(upperY, z + windowOffset * 0.85, rng.pick(paneColors), true, false);
+
+      const balconyY = base + groundH + 0.05;
+      this.box(
+        context.core,
+        this.materials.wood,
+        0x9a744b,
+        1.05,
+        0.12,
+        depth * 0.7,
+        riverFaceX - side * 0.52,
+        balconyY,
+        z,
+        { cast: true, receive: true, tile: 0 },
+      );
+      this.box(
+        context.core,
+        this.materials.wood,
+        0x765638,
+        0.09,
+        1.45,
+        0.6,
+        riverFaceX - side * 0.03,
+        balconyY + 0.78,
+        z,
+        { cast: false, receive: true, tile: 0 },
+      );
+      for (const dir of [-1, 1] as const) {
+        for (const railY of [0.34, 0.66]) {
+          this.box(
+            context.core,
+            this.materials.wood,
+            0x5e4936,
+            0.08,
+            0.08,
+            depth * 0.66,
+            riverFaceX - side * 0.98,
+            balconyY + railY,
+            z,
+            { cast: false, receive: true, tile: 0 },
+          );
+        }
+        for (const postZ of [-depth * 0.3, depth * 0.3]) {
+          this.box(
+            context.core,
+            this.materials.wood,
+            0x765638,
+            0.09,
+            0.72,
+            0.09,
+            riverFaceX - side * 0.98,
+            balconyY + 0.36,
+            z + postZ,
+            { cast: false, receive: true, tile: 0 },
+          );
+        }
+      }
+    }
+
+    if (hasVeranda) {
+      const platformY = 0.19;
+      const platformDepth = 1.15;
+      const verandaDepth = depth * 0.87;
+      const platformX = riverFaceX - side * (platformDepth / 2 - 0.02);
+      const verandaRoofY = base + groundH - 0.24;
+      this.box(
+        context.core,
+        this.materials.wood,
+        0x9a744b,
+        platformDepth,
+        0.12,
+        verandaDepth,
+        platformX,
+        platformY,
+        z,
+        { cast: true, receive: true, tile: 0 },
+      );
+      for (const dir of [-1, 1] as const) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x765638,
+          0.11,
+          verandaRoofY - platformY,
+          0.11,
+          riverFaceX - side * (platformDepth - 0.12),
+          (platformY + verandaRoofY) / 2,
+          z + dir * (verandaDepth / 2 - 0.2),
+          { cast: false, receive: true, tile: 0 },
+        );
+      }
+      for (const railY of [0.36, 0.62]) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x5e4936,
+          0.08,
+          0.08,
+          verandaDepth - 0.2,
+          riverFaceX - side * (platformDepth - 0.1),
+          platformY + railY,
+          z,
+          { cast: false, receive: true, tile: 0 },
+        );
+      }
+      for (const post of [-1, 0, 1] as const) {
+        this.box(
+          context.core,
+          this.materials.wood,
+          0x765638,
+          0.09,
+          0.7,
+          0.09,
+          riverFaceX - side * (platformDepth - 0.1),
+          platformY + 0.35,
+          z + post * verandaDepth * 0.32,
+          { cast: false, receive: true, tile: 0 },
+        );
+      }
+      this.box(
+        context.core,
+        this.materials.roof,
+        roofColor,
+        1.6,
+        0.09,
+        verandaDepth + 0.3,
+        riverFaceX - side * 0.68,
+        verandaRoofY,
+        z,
+        { cast: false, receive: true, rotZ: side * 0.14, tile: 0.9 },
+      );
+      for (const dir of [-1, 1] as const) {
+        this.cylinder(
+          context.core,
+          this.materials.plaster,
+          0x9a7a56,
+          0.16,
+          0.2,
+          0.32,
+          7,
+          riverFaceX - side * (platformDepth - 0.15),
+          platformY + 0.18,
+          z + dir * (verandaDepth / 2 - 0.35),
+          { cast: false, receive: true },
+        );
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick(LEAF_COLORS),
+          0.26,
+          7,
+          5,
+          riverFaceX - side * (platformDepth - 0.15),
+          platformY + 0.5,
+          z + dir * (verandaDepth / 2 - 0.35),
+          { cast: false, receive: true, scaleY: 0.85 },
+        );
+      }
+    }
+
+    if (!background) {
+      const pathStart = side * (BANK_OUTER + 0.15);
+      const pathLength = Math.abs(riverFaceX - pathStart);
+      this.box(
+        context.core,
+        this.materials.dirt,
+        0x9a8362,
+        pathLength,
+        0.02,
+        1.05,
+        (pathStart + riverFaceX) / 2,
+        -0.06,
+        z,
+        { cast: false, receive: true, tile: 1.6 },
+      );
+      if (setback > 1.2 && rng.chance(0.55)) {
+        const wallX = side * (BANK_OUTER + 0.15);
+        const wallBase = -0.07;
+        const wallLength = depth + 1.1;
+        const gateWidth = 1.3;
+        for (const dir of [-1, 1] as const) {
+          const segmentLength = (wallLength - gateWidth) / 2;
+          const segmentZ = z + dir * (gateWidth / 2 + segmentLength / 2);
+          this.box(
+            context.core,
+            this.materials.plaster,
+            rng.pick([0xe0cba8, 0xd8c19b, 0xcbb58f] as const),
+            0.22,
+            0.72,
+            segmentLength,
+            wallX,
+            wallBase + 0.36,
+            segmentZ,
+            { cast: true, receive: true, tile: 1 },
+          );
+          this.box(
+            context.core,
+            this.materials.concrete,
+            0xcbbda6,
+            0.3,
+            0.08,
+            segmentLength + 0.08,
+            wallX,
+            wallBase + 0.76,
+            segmentZ,
+            { cast: false, receive: true, tile: 1 },
+          );
+        }
+        for (const dir of [-1, 1] as const) {
+          this.box(
+            context.core,
+            this.materials.concrete,
+            0xcdbfa8,
+            0.34,
+            1,
+            0.34,
+            wallX,
+            wallBase + 0.5,
+            z + dir * (gateWidth / 2),
+            { cast: true, receive: true, tile: 1 },
+          );
+          this.box(
+            context.core,
+            this.materials.concrete,
+            0xd7cab3,
+            0.44,
+            0.12,
+            0.44,
+            wallX,
+            wallBase + 1.04,
+            z + dir * (gateWidth / 2),
+            { cast: false, receive: true, tile: 1 },
+          );
+        }
+        if (rng.chance(0.45)) {
+          for (const dir of [-1, 1] as const) {
+            this.box(
+              context.core,
+              this.materials.metal,
+              0x3b4b49,
+              0.06,
+              0.84,
+              0.58,
+              wallX,
+              wallBase + 0.44,
+              z + dir * 0.3,
+              { cast: false, receive: true, tile: 0 },
+            );
+          }
+        }
+      }
+    }
+
+    for (const dir of [-1, 1] as const) {
+      const bushX = riverFaceX - side * 0.35;
+      const bushZ = z + dir * (depth / 2 + 0.55);
+      const radius = rng.range(0.36, 0.58);
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(LEAF_COLORS),
+        radius,
+        8,
+        6,
+        bushX,
+        -0.065 + radius * 0.6,
+        bushZ,
+        { scaleY: 0.85, cast: true, receive: true },
+      );
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        rng.pick(FLOWER_COLORS),
+        0.09,
+        6,
+        4,
+        bushX + rng.range(-0.25, 0.25),
+        -0.065 + radius * 1.15,
+        bushZ + rng.range(-0.25, 0.25),
+        { cast: false, receive: false, scaleY: 0.8 },
+      );
+    }
+  }
+
+  private addReeds(
+    context: BuildContext,
+    rng: Rng,
+    x: number,
+    z: number,
+  ): void {
+    const baseY = this.bankHeight(Math.abs(x), z);
+    for (let blade = 0; blade < 6; blade += 1) {
+      const height = rng.range(0.45, 1.05);
+      const lean = rng.range(-0.24, 0.24);
+      const bladeX = x + rng.range(-0.18, 0.18);
+      const bladeZ = z + rng.range(-0.18, 0.18);
+      this.cylinder(
+        context.core,
+        this.materials.foliage,
+        rng.pick([0x648f42, 0x83a44c, 0xa2ad57, 0x4c7f43] as const),
+        0.012,
+        0.045,
+        height,
+        5,
+        bladeX,
+        baseY + height / 2,
+        bladeZ,
+        { cast: false, receive: false, rotZ: lean, rotX: lean * 0.7 },
+      );
+      if (blade % 2 === 0) {
+        this.cylinder(
+          context.core,
+          this.materials.foliage,
+          rng.pick([0x7a5a3a, 0x8a6841] as const),
+          0.03,
+          0.05,
+          0.2,
+          5,
+          bladeX,
+          baseY + height + 0.06,
+          bladeZ,
+          { cast: false, receive: false, rotZ: lean, rotX: lean * 0.7 },
+        );
+      }
+    }
   }
 
   private *addConstructionLotSteps(
@@ -651,9 +1978,9 @@ export class StreetChunkBuilder {
     this.addConstructionMaterials(
       context,
       rng,
-      side * rng.range(5.1, 5.55),
+      side * 9.85,
       centerZ + rng.range(-4.0, 4.0),
-      rng.range(-1.2, 1.2),
+      0.3,
     );
     yield 'construction-materials';
   }
@@ -952,7 +2279,7 @@ export class StreetChunkBuilder {
         this.materials.fabric,
         rng.chance(0.5) ? 0x2e5e86 : 0x3f7d70,
         0.03,
-        rng.range(1.2, 2.0),
+        rng.range(0.9, 1.3),
         rng.range(1.5, 2.8),
         scaffoldX - side * 0.74,
         2.2,
@@ -982,7 +2309,7 @@ export class StreetChunkBuilder {
         0.11,
         rng.range(1.2, 2.0),
         8,
-        side * rng.range(8.6, 10.2),
+        side * rng.range(9.5, 9.65),
         0.18,
         centerZ + rng.range(-width / 2, width / 2),
         { cast: true, receive: true, rotZ: Math.PI / 2, rotY: rng.range(-0.4, 0.4) },
@@ -1189,52 +2516,24 @@ export class StreetChunkBuilder {
     side: Side,
     centerZ: number,
   ): void {
-    const x = side * rng.range(6.55, 6.85);
+    const x = side * rng.range(9.55, 9.7);
     const length = rng.range(1.9, 2.9);
     const width = rng.range(1.0, 1.22);
     const top = SIDEWALK_TOP;
     const soilColor = rng.chance(0.5) ? 0x6f5338 : 0x7d5f40;
-    const borderColor = rng.chance(0.5) ? 0xcbbfa9 : 0x9d5a43;
 
     this.box(
       context.core,
       this.materials.dirt,
       soilColor,
       width,
-      0.07,
+      0.025,
       length,
       x,
-      top + 0.08,
+      top + 0.0125,
       centerZ,
       { cast: false, receive: true, tile: 0.9 },
     );
-
-    for (const offset of [-1, 1]) {
-      this.box(
-        context.core,
-        this.materials.concrete,
-        borderColor,
-        0.12,
-        0.2,
-        length + 0.12,
-        x + offset * (width / 2 + 0.04),
-        top + 0.1,
-        centerZ,
-        { cast: true, receive: true, tile: 0 },
-      );
-      this.box(
-        context.core,
-        this.materials.concrete,
-        borderColor,
-        width + 0.2,
-        0.2,
-        0.12,
-        x,
-        top + 0.1,
-        centerZ + offset * (length / 2 + 0.04),
-        { cast: true, receive: true, tile: 0 },
-      );
-    }
 
     const bushes = rng.int(3, 5);
     for (let bush = 0; bush < bushes; bush += 1) {
@@ -1272,64 +2571,6 @@ export class StreetChunkBuilder {
       }
     }
 
-    const fenceX = x - side * (width / 2 + 0.24);
-    for (let bar = 0; bar < 4; bar += 1) {
-      this.box(
-        context.detail,
-        this.materials.metal,
-        0x3e4b46,
-        0.045,
-        0.52,
-        0.045,
-        fenceX,
-        top + 0.28,
-        centerZ - length / 2 + 0.2 + (bar / 3) * (length - 0.4),
-        { cast: false, receive: false, tile: 0 },
-      );
-    }
-    for (const y of [top + 0.18, top + 0.48]) {
-      this.box(
-        context.detail,
-        this.materials.metal,
-        0x3e4b46,
-        0.04,
-        0.04,
-        length - 0.3,
-        fenceX,
-        y,
-        centerZ,
-        { cast: false, receive: false, tile: 0 },
-      );
-    }
-
-    for (let pot = 0; pot < 2; pot += 1) {
-      const potZ = centerZ + (pot === 0 ? -1 : 1) * (length / 2 - 0.24);
-      this.cylinder(
-        context.detail,
-        this.materials.plaster,
-        rng.chance(0.5) ? 0x9d4b35 : 0xb77746,
-        0.13,
-        0.17,
-        0.3,
-        8,
-        x + rng.range(-0.15, 0.15),
-        top + 0.23,
-        potZ,
-        { cast: true, receive: true },
-      );
-      this.sphere(
-        context.detail,
-        this.materials.foliage,
-        rng.pick(LEAF_COLORS),
-        0.2,
-        6,
-        5,
-        x,
-        top + 0.46,
-        potZ,
-        { scaleY: 0.9, cast: false, receive: false },
-      );
-    }
   }
 
   private addCompoundWall(
@@ -2770,19 +4011,32 @@ export class StreetChunkBuilder {
   private addTrees(context: BuildContext, rng: Rng, theme: ZoneTheme): void {
     const [minTrees, maxTrees] = theme.dressing.treeCount;
     for (const side of [-1, 1] as const) {
-      const treeCount = rng.int(minTrees, maxTrees);
+      const treeCount = rng.int(
+        Math.max(4, minTrees + 1),
+        Math.max(6, maxTrees + 3),
+      );
       for (let tree = 0; tree < treeCount; tree += 1) {
         const z =
           -HALF +
-          4.5 +
-          (tree + 0.4) * (ROAD.chunkLength / (treeCount + 0.9)) +
-          rng.range(-1.6, 1.6);
-        const x = side * rng.range(6.2, 6.85);
-        if (rng.chance(0.55)) {
-          this.addPalm(context, x, z, rng);
+          3.2 +
+          (tree + 0.35) * (ROAD.chunkLength / (treeCount + 0.4)) +
+          rng.range(-1.7, 1.7);
+        const absX = rng.range(BANK_INNER + 2.7, BANK_OUTER - 1);
+        const baseY = this.bankHeight(absX, z);
+        if (rng.chance(0.38)) {
+          this.addPalm(context, side * absX, z, rng, baseY);
         } else {
-          this.addNeem(context, x, z, rng);
+          this.addNeem(context, side * absX, z, rng, baseY);
         }
+      }
+
+      for (let tree = 0; tree < 4; tree += 1) {
+        this.addBackgroundTree(
+          context,
+          rng,
+          side * rng.range(29, 36),
+          -HALF + rng.range(1, ROAD.chunkLength - 1),
+        );
       }
     }
   }
@@ -2792,56 +4046,92 @@ export class StreetChunkBuilder {
     x: number,
     z: number,
     rng: Rng,
+    baseY = SIDEWALK_TOP,
   ): void {
-    const height = rng.range(3.9, 5.4);
-    const trunkColor = rng.chance(0.5) ? 0x7b5c3c : 0x8c6943;
+    const height = rng.range(4.1, 6.1);
+    const trunkColor = rng.pick([0x7b5c3c, 0x8c6943, 0x6f5236] as const);
     const leafColor = rng.pick(LEAF_COLORS);
-    const top = SIDEWALK_TOP + height;
+    const top = baseY + height;
 
-    this.addTreePit(context, x, z);
+    this.addTreePit(context, x, z, baseY);
     this.cylinder(
       context.core,
       this.materials.wood,
       trunkColor,
-      0.14,
-      0.22,
+      0.13,
+      0.24,
       height,
       8,
       x,
-      SIDEWALK_TOP + height / 2,
+      baseY + height / 2,
       z,
       { cast: true, receive: true },
     );
+    for (let ring = 0; ring < 5; ring += 1) {
+      const ringY = baseY + 0.6 + (ring * (height - 1.2)) / 5;
+      const ringRadius = 0.225 - ring * 0.014;
+      this.cylinder(
+        context.core,
+        this.materials.wood,
+        0x5f4731,
+        ringRadius,
+        ringRadius + 0.02,
+        0.06,
+        8,
+        x,
+        ringY,
+        z,
+        { cast: false, receive: false },
+      );
+    }
     this.cylinder(
       context.core,
       this.materials.wood,
       0x6c5238,
       0.1,
-      0.15,
-      0.18,
+      0.16,
+      0.2,
       8,
       x,
-      top + 0.06,
+      top + 0.05,
       z,
       { cast: true, receive: false },
     );
 
-    const fronds = rng.int(7, 9);
+    const fronds = rng.int(8, 11);
     for (let frond = 0; frond < fronds; frond += 1) {
       const angle = (frond / fronds) * Math.PI * 2 + rng.range(-0.12, 0.12);
-      const length = rng.range(1.7, 2.55);
-      const tilt = rng.range(0.2, 0.52);
+      const length = rng.range(1.9, 2.9);
+      const tilt = rng.range(0.24, 0.62);
       this.box(
         context.core,
         this.materials.foliage,
         leafColor,
-        0.17,
-        0.045,
+        0.14,
+        0.04,
         length,
         x - Math.sin(angle) * (length / 2),
         top - Math.sin(tilt) * length * 0.42,
         z - Math.cos(angle) * (length / 2),
         { cast: true, receive: true, rotY: angle, rotX: -tilt, tile: 0 },
+      );
+      this.box(
+        context.core,
+        this.materials.foliage,
+        rng.pick(LEAF_SHADOWS),
+        0.34,
+        0.025,
+        length * 0.55,
+        x - Math.sin(angle) * (length * 0.64),
+        top - Math.sin(tilt) * length * 0.5 - 0.02,
+        z - Math.cos(angle) * (length * 0.64),
+        {
+          cast: false,
+          receive: false,
+          rotY: angle + (frond % 2 === 0 ? 0.55 : -0.55),
+          rotX: -tilt,
+          tile: 0,
+        },
       );
     }
 
@@ -2860,7 +4150,7 @@ export class StreetChunkBuilder {
       );
     }
 
-    this.shadow(context.detail, 2.5, 2.5, x, z, SIDEWALK_TOP + 0.012);
+    this.shadow(context.detail, 2.6, 2.6, x, z, baseY + 0.012);
   }
 
   private addNeem(
@@ -2868,103 +4158,238 @@ export class StreetChunkBuilder {
     x: number,
     z: number,
     rng: Rng,
+    baseY = SIDEWALK_TOP,
   ): void {
-    const height = rng.range(2.8, 4.2);
+    const height = rng.range(3, 4.6);
     const leafColor = rng.pick(LEAF_COLORS);
-    const top = SIDEWALK_TOP + height;
+    const top = baseY + height;
 
-    this.addTreePit(context, x, z);
+    this.addTreePit(context, x, z, baseY);
     this.cylinder(
       context.core,
       this.materials.wood,
       0x6e5136,
       0.13,
-      0.2,
+      0.23,
       height,
       8,
       x,
-      SIDEWALK_TOP + height / 2,
+      baseY + height / 2,
       z,
       { cast: true, receive: true },
     );
-    this.sphere(
-      context.core,
-      this.materials.foliage,
-      leafColor,
-      rng.range(1.15, 1.55),
-      9,
-      7,
-      x,
-      top,
-      z,
-      { cast: true, receive: true, scaleY: 0.82 },
-    );
-    this.sphere(
-      context.core,
-      this.materials.foliage,
-      leafColor,
-      rng.range(0.78, 1.05),
-      8,
-      6,
-      x + rng.range(-0.6, 0.6),
-      top + rng.range(0.35, 0.75),
-      z + rng.range(-0.6, 0.6),
-      { cast: true, receive: true, scaleY: 0.9 },
-    );
-    this.sphere(
-      context.core,
-      this.materials.foliage,
-      leafColor,
-      rng.range(0.65, 0.9),
-      8,
-      6,
-      x + rng.range(-0.8, 0.8),
-      top - rng.range(0.3, 0.55),
-      z + rng.range(-0.8, 0.8),
-      { cast: true, receive: true, scaleY: 0.82 },
-    );
+    for (let branch = 0; branch < 3; branch += 1) {
+      const angle = branch * 2.1 + rng.range(-0.4, 0.4);
+      this.cylinder(
+        context.core,
+        this.materials.wood,
+        0x5f4630,
+        0.05,
+        0.11,
+        rng.range(0.9, 1.5),
+        6,
+        x + Math.cos(angle) * 0.45,
+        top - 0.95 + rng.range(-0.2, 0.2),
+        z + Math.sin(angle) * 0.45,
+        {
+          cast: true,
+          receive: true,
+          rotZ: Math.cos(angle) * 0.6,
+          rotX: Math.sin(angle) * 0.6,
+        },
+      );
+    }
 
-    this.shadow(context.detail, 3.2, 3.2, x, z, SIDEWALK_TOP + 0.012);
+    const canopyCount = rng.int(6, 8);
+    for (let blob = 0; blob < canopyCount; blob += 1) {
+      const angle = rng.range(0, Math.PI * 2);
+      const distance = rng.range(0, 1.15);
+      const color = rng.chance(0.28)
+        ? rng.pick(LEAF_HIGHLIGHTS)
+        : rng.chance(0.28)
+          ? rng.pick(LEAF_SHADOWS)
+          : leafColor;
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        color,
+        rng.range(0.85, 1.35),
+        8,
+        6,
+        x + Math.cos(angle) * distance,
+        top + rng.range(-0.5, 0.85),
+        z + Math.sin(angle) * distance,
+        { cast: true, receive: true, scaleY: rng.range(0.7, 0.9) },
+      );
+    }
+
+    this.shadow(context.detail, 3.4, 3.4, x, z, baseY + 0.012);
   }
 
-  private addTreePit(context: BuildContext, x: number, z: number): void {
+  private addBackgroundTree(
+    context: BuildContext,
+    rng: Rng,
+    x: number,
+    z: number,
+  ): void {
+    const height = rng.range(4.5, 8);
+    const baseY = -0.06;
+    this.cylinder(
+      context.core,
+      this.materials.wood,
+      rng.pick([0x6b523a, 0x5f4a35] as const),
+      0.18,
+      0.32,
+      height,
+      6,
+      x,
+      baseY + height / 2,
+      z,
+      { cast: false, receive: true },
+    );
+    const shadowColor = rng.pick(LEAF_SHADOWS);
+    for (let blob = 0; blob < 3; blob += 1) {
+      this.sphere(
+        context.core,
+        this.materials.foliage,
+        blob === 0 ? shadowColor : rng.pick(LEAF_COLORS),
+        rng.range(1.6, 2.6),
+        7,
+        5,
+        x + rng.range(-1.2, 1.2),
+        baseY + height * 0.82 + rng.range(-0.6, 1.2),
+        z + rng.range(-1.2, 1.2),
+        { cast: false, receive: true, scaleY: 0.85 },
+      );
+    }
+  }
+
+  private addTreePit(
+    context: BuildContext,
+    x: number,
+    z: number,
+    baseY = SIDEWALK_TOP,
+  ): void {
     this.box(
       context.core,
       this.materials.dirt,
       0x715d3d,
       1.15,
-      0.02,
+      0.025,
       1.15,
       x,
-      SIDEWALK_TOP + 0.01,
+      baseY + 0.0125,
       z,
       { cast: false, receive: true, tile: 1 },
     );
-    for (const offset of [-0.62, 0.62]) {
-      this.box(
-        context.core,
-        this.materials.concrete,
-        0xd8cdb8,
-        1.34,
-        0.07,
-        0.11,
-        x,
-        SIDEWALK_TOP + 0.035,
-        z + offset,
-        { cast: false, receive: true, tile: 0 },
-      );
-      this.box(
-        context.core,
-        this.materials.concrete,
-        0xd8cdb8,
-        0.11,
-        0.07,
-        1.34,
-        x + offset,
-        SIDEWALK_TOP + 0.035,
-        z,
-        { cast: false, receive: true, tile: 0 },
-      );
+  }
+
+  private addDistantScenery(context: BuildContext, rng: Rng): void {
+    for (const side of [-1, 1] as const) {
+      for (let tree = 0; tree < 10; tree += 1) {
+        const x = side * rng.range(32, 47);
+        const z = -HALF + rng.range(0, ROAD.chunkLength);
+        const height = rng.range(5, 9);
+        const baseY = -0.08;
+        this.cylinder(
+          context.core,
+          this.materials.wood,
+          0x5c4a38,
+          0.22,
+          0.38,
+          height,
+          5,
+          x,
+          baseY + height / 2,
+          z,
+          { cast: false, receive: false },
+        );
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick(LEAF_SHADOWS),
+          rng.range(2.2, 3.6),
+          7,
+          5,
+          x,
+          baseY + height * 0.85,
+          z,
+          { cast: false, receive: false, scaleY: 0.8 },
+        );
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick(LEAF_COLORS),
+          rng.range(1.5, 2.6),
+          6,
+          4,
+          x + rng.range(-1.4, 1.4),
+          baseY + height * 0.95,
+          z + rng.range(-1.4, 1.4),
+          { cast: false, receive: false, scaleY: 0.8 },
+        );
+      }
+
+      for (let house = 0; house < 4; house += 1) {
+        const x = side * rng.range(34, 43);
+        const z = -HALF + rng.range(0, ROAD.chunkLength);
+        const width = rng.range(3.2, 4.6);
+        const depth = rng.range(3.4, 4.6);
+        const height = rng.range(2.4, 3.2);
+        const wallColor = rng.pick(VILLAGE_WALLS);
+        this.box(
+          context.core,
+          this.materials.plaster,
+          wallColor,
+          width,
+          height,
+          depth,
+          x,
+          height / 2 - 0.06,
+          z,
+          { cast: false, receive: false, tile: 0.9 },
+        );
+        this.gableRoof(
+          context.core,
+          rng.pick(TERRACOTTA),
+          wallColor,
+          width + 0.5,
+          depth + 0.5,
+          width * 0.28 + 0.1,
+          x,
+          height - 0.06,
+          z,
+        );
+        this.box(
+          context.core,
+          this.materials.glass,
+          0x718a8c,
+          0.06,
+          0.55,
+          0.8,
+          x - side * (width / 2 + 0.02),
+          1.35,
+          z,
+          { cast: false, receive: false, tile: 0 },
+        );
+      }
+
+      for (let hill = 0; hill < 3; hill += 1) {
+        const x = side * rng.range(44, 50);
+        const z = -HALF + rng.range(0, ROAD.chunkLength);
+        this.sphere(
+          context.core,
+          this.materials.foliage,
+          rng.pick([0x3f6134, 0x466b39, 0x38572f] as const),
+          rng.range(9, 15),
+          8,
+          6,
+          x,
+          -2.5,
+          z,
+          { cast: false, receive: false, scaleY: 0.45 },
+        );
+      }
     }
   }
 
@@ -3067,7 +4492,7 @@ export class StreetChunkBuilder {
   private addStreetLamps(context: BuildContext, rng: Rng): void {
     for (const side of [-1, 1] as const) {
       const z = side === -1 ? rng.range(-15, -3) : rng.range(2, 16);
-      const x = side * 4.66;
+      const x = side * 9.8;
       const height = rng.range(4.0, 4.55);
       const armX = x - side * 0.92;
 
@@ -3132,7 +4557,7 @@ export class StreetChunkBuilder {
     ] as const;
 
     for (const side of [-1, 1] as const) {
-      const x = side * 4.58;
+      const x = side * 9.8;
       const z = rng.range(-18, 18);
       this.cylinder(
         context.detail,
@@ -3167,7 +4592,7 @@ export class StreetChunkBuilder {
       const count = rng.int(minVehicles, maxVehicles);
       for (let i = 0; i < count; i += 1) {
         const z = rng.range(-20, 20);
-        const x = side * rng.range(4.9, 5.2);
+        const x = side * rng.range(9.1, 9.35);
         const roll = rng.next();
         if (roll < 0.34) {
           this.addMotorcycle(context, x, z, rng);
@@ -4790,8 +6215,15 @@ export class StreetChunkBuilder {
     depth: number,
     uTile: number,
     vTile: number,
+    widthSegments = 1,
+    depthSegments = 1,
   ): THREE.Mesh {
-    const geometry = new THREE.PlaneGeometry(width, depth);
+    const geometry = new THREE.PlaneGeometry(
+      width,
+      depth,
+      widthSegments,
+      depthSegments,
+    );
     const uv = geometry.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < uv.count; i += 1) {
       uv.setXY(i, (uv.getX(i) * width) / uTile, (uv.getY(i) * depth) / vTile);

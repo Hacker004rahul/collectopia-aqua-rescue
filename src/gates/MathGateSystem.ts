@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GATE_BIAS, GATES, LANES } from '../config/balance';
+import { GATE_BIAS, GATES, LANES, PLAYER } from '../config/balance';
 import { Rng } from '../core/Rng';
 import type { SpawnReservations } from '../core/SpawnReservations';
 import type { EconomyManager } from '../economy/EconomyManager';
@@ -19,8 +19,14 @@ interface GatePair {
   z: number;
   active: boolean;
   used: boolean;
+  selectedGate: Gate | null;
   id: number;
 }
+
+const GATE_RESERVATION_HALF_LENGTH = 4.5;
+const GATE_RESERVATION_PAD = 12;
+const GATE_APPROACH_HIGHLIGHT_DISTANCE = 28;
+const GATE_RECYCLE_DISTANCE = 5;
 
 export interface GateActivation {
   text: string;
@@ -45,6 +51,7 @@ export class MathGateSystem {
   private nextDistance = GATES.initialDistance;
   private nextPairId = 1;
   private lastPlayerZ = 0;
+  private lastPlayerX = 0;
   private initialized = false;
   private readonly recentPairs: string[] = [];
 
@@ -69,12 +76,13 @@ export class MathGateSystem {
         z: 0,
         active: false,
         used: false,
+        selectedGate: null,
         id: 0,
       });
     }
   }
 
-  update(playerZ: number, playerLane: number, distance: number): void {
+  update(playerZ: number, playerX: number, distance: number, time = 0): void {
     while (
       this.nextDistance < distance + GATES.spawnAhead &&
       this.pairs.some((pair) => !pair.active)
@@ -90,26 +98,55 @@ export class MathGateSystem {
 
     if (!this.initialized) {
       this.lastPlayerZ = playerZ;
+      this.lastPlayerX = playerX;
       this.initialized = true;
     }
 
     for (const pair of this.pairs) {
       if (!pair.active) continue;
 
+      pair.gates[0].update(time + pair.id);
+      pair.gates[1].update(time + pair.id);
+
+      if (!pair.used) {
+        pair.selectedGate =
+          playerZ > pair.z &&
+          playerZ - pair.z <= GATE_APPROACH_HIGHLIGHT_DISTANCE
+            ? this.findPassableGate(pair, playerX) ?? null
+            : null;
+        pair.gates[0].setSelected(pair.selectedGate === pair.gates[0]);
+        pair.gates[1].setSelected(pair.selectedGate === pair.gates[1]);
+      }
+
       if (!pair.used && this.lastPlayerZ > pair.z && playerZ <= pair.z) {
         pair.used = true;
-        const gate = pair.gates.find((candidate) => candidate.laneIndex === playerLane);
+        const crossingFraction = THREE.MathUtils.clamp(
+          (this.lastPlayerZ - pair.z) / (this.lastPlayerZ - playerZ),
+          0,
+          1,
+        );
+        const crossingX = THREE.MathUtils.lerp(
+          this.lastPlayerX,
+          playerX,
+          crossingFraction,
+        );
+        const gate = this.findPassableGate(pair, crossingX);
+        pair.selectedGate = gate ?? null;
         if (gate) {
+          gate.setSelected(true);
           this.activateGate(pair, gate);
         }
       }
 
-      if (pair.z > playerZ + 12) {
+      if (
+        pair.z > playerZ + (pair.used ? GATE_RECYCLE_DISTANCE : 12)
+      ) {
         this.releasePair(pair);
       }
     }
 
     this.lastPlayerZ = playerZ;
+    this.lastPlayerX = playerX;
   }
 
   reset(): void {
@@ -120,6 +157,7 @@ export class MathGateSystem {
     this.nextDistance = GATES.initialDistance;
     this.nextPairId = 1;
     this.lastPlayerZ = 0;
+    this.lastPlayerX = 0;
     this.initialized = false;
     this.recentPairs.length = 0;
   }
@@ -133,19 +171,25 @@ export class MathGateSystem {
   private spawnPair(pair: GatePair, distance: number): boolean {
     if (
       this.reservations &&
-      !this.reservations.isClear(distance, 3.5, [0, 1, 2], 11)
+      !this.reservations.isClear(
+        distance,
+        GATE_RESERVATION_HALF_LENGTH,
+        [0, 1, 2],
+        GATE_RESERVATION_PAD,
+      )
     ) {
       return false;
     }
 
     const selection = this.pickPair();
-    const lanes: [number, number] = this.rng.chance(0.5) ? [0, 1] : [1, 2];
+    const lanes: [number, number] = [0, 2];
 
     pair.id = this.nextPairId++;
     pair.distance = distance;
     pair.z = -distance;
     pair.active = true;
     pair.used = false;
+    pair.selectedGate = null;
 
     pair.gates[0].setSpec(
       selection.first,
@@ -166,11 +210,17 @@ export class MathGateSystem {
     this.reservations?.reserve({
       owner: 'gate',
       distance,
-      halfLength: 3.5,
+      halfLength: GATE_RESERVATION_HALF_LENGTH,
       lanes: [0, 1, 2],
-      pad: 10,
+      pad: GATE_RESERVATION_PAD,
     });
     return true;
+  }
+
+  private findPassableGate(pair: GatePair, playerX: number): Gate | undefined {
+    return pair.gates.find((gate) =>
+      gate.canPass(playerX, PLAYER.collisionHalfWidth),
+    );
   }
 
   private pickPair(): GatePairSelection {
@@ -204,6 +254,7 @@ export class MathGateSystem {
   private releasePair(pair: GatePair): void {
     pair.active = false;
     pair.used = false;
+    pair.selectedGate = null;
     pair.group.visible = false;
     pair.gates[0].hide();
     pair.gates[1].hide();
@@ -234,7 +285,7 @@ export class MathGateSystem {
       positive: result.entry.balanceAfter >= result.entry.balanceBefore,
       position: new THREE.Vector3(
         gate.group.position.x,
-        2.35,
+        0.14,
         pair.group.position.z,
       ),
     });

@@ -394,6 +394,275 @@ export function createDirtTexture(): THREE.CanvasTexture {
   return canvasTexture(canvas);
 }
 
+export function createGrassTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(256, 256);
+  const random = seeded(0x6a5512);
+
+  ctx.fillStyle = '#5f8741';
+  ctx.fillRect(0, 0, 256, 256);
+
+  for (let patch = 0; patch < 30; patch += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 12 + random() * 46;
+    const light = random() > 0.46;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(
+      0,
+      light
+        ? `rgba(143, 181, 94, ${0.10 + random() * 0.16})`
+        : `rgba(48, 92, 45, ${0.10 + random() * 0.16})`,
+    );
+    gradient.addColorStop(1, light ? 'rgba(143, 181, 94, 0)' : 'rgba(48, 92, 45, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  addGrain(ctx, random, 256, 256, 2400, 0.025, 0.11);
+
+  for (let blade = 0; blade < 1400; blade += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const height = 2 + random() * 9;
+    const shade = Math.floor(82 + random() * 84);
+    ctx.strokeStyle = `rgba(${Math.max(0, shade - 32)}, ${shade}, ${Math.max(
+      0,
+      shade - 52,
+    )}, ${0.16 + random() * 0.28})`;
+    ctx.lineWidth = 0.6 + random() * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(
+      x + (random() - 0.5) * 4,
+      y - height * 0.55,
+      x + (random() - 0.5) * 7,
+      y - height,
+    );
+    ctx.stroke();
+  }
+
+  for (let flower = 0; flower < 26; flower += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const palette = ['#f2e6a6', '#f4f1e1', '#e7b84c', '#d98fa8'];
+    ctx.fillStyle = palette[Math.floor(random() * palette.length)];
+    ctx.globalAlpha = 0.55 + random() * 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, 0.9 + random() * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  for (let soil = 0; soil < 16; soil += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    ctx.fillStyle = `rgba(104, 82, 54, ${0.05 + random() * 0.1})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      x,
+      y,
+      3 + random() * 16,
+      2 + random() * 7,
+      random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  return canvasTexture(canvas);
+}
+
+export function createShoreTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(256, 256);
+  const random = seeded(0x5a0e21);
+
+  ctx.fillStyle = '#8a7556';
+  ctx.fillRect(0, 0, 256, 256);
+
+  for (let patch = 0; patch < 22; patch += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 10 + random() * 46;
+    const sand = random() > 0.5;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(
+      0,
+      sand
+        ? `rgba(182, 156, 112, ${0.14 + random() * 0.2})`
+        : `rgba(74, 61, 43, ${0.14 + random() * 0.2})`,
+    );
+    gradient.addColorStop(1, sand ? 'rgba(182, 156, 112, 0)' : 'rgba(74, 61, 43, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  addGrain(ctx, random, 256, 256, 3200, 0.03, 0.14);
+
+  for (let pebble = 0; pebble < 220; pebble += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 0.8 + random() * 3.4;
+    const shade = Math.floor(88 + random() * 96);
+    ctx.fillStyle = `rgb(${shade + 8}, ${shade}, ${shade - 14})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      x,
+      y,
+      radius,
+      radius * (0.55 + random() * 0.4),
+      random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 248, 226, 0.16)';
+    ctx.beginPath();
+    ctx.ellipse(
+      x - radius * 0.24,
+      y - radius * 0.24,
+      radius * 0.42,
+      radius * 0.28,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  for (let root = 0; root < 12; root += 1) {
+    ctx.strokeStyle = `rgba(84, 62, 38, ${0.12 + random() * 0.14})`;
+    ctx.lineWidth = 0.8 + random() * 1.6;
+    let x = random() * 256;
+    let y = random() * 256;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let step = 0; step < 4; step += 1) {
+      x += (random() - 0.5) * 30;
+      y += (random() - 0.5) * 30;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  return canvasTexture(canvas);
+}
+
+export function createWaterTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  const random = seeded(0x2a7195);
+  const pixels = ctx.createImageData(size, size);
+  const tau = Math.PI * 2;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size;
+      const v = y / size;
+      const wave = Math.sin((v * 8 + Math.sin(u * tau * 3) * 0.12) * tau);
+      const crossWave = Math.cos((u * 4 + v * 5) * tau);
+      const index = (y * size + x) * 4;
+      pixels.data[index] = 5 + Math.max(0, wave) * 2;
+      pixels.data[index + 1] = 39 + wave * 9 + crossWave * 3;
+      pixels.data[index + 2] = 62 + wave * 11 + crossWave * 5;
+      pixels.data[index + 3] = 255;
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+
+  const wrapOffsets = [-size, 0, size];
+  for (let ripple = 0; ripple < 110; ripple += 1) {
+    const x = random() * size;
+    const y = random() * size;
+    const length = 8 + random() * 38;
+    const bend = (random() - 0.5) * 8;
+    const alpha = 0.08 + random() * 0.24;
+    ctx.strokeStyle =
+      random() < 0.82
+        ? `rgba(118, 205, 198, ${alpha})`
+        : `rgba(246, 191, 111, ${alpha * 0.68})`;
+    ctx.lineWidth = 0.6 + random() * 1.8;
+    for (const offsetY of wrapOffsets) {
+      for (const offsetX of wrapOffsets) {
+        ctx.beginPath();
+        ctx.moveTo(x + offsetX, y + offsetY);
+        ctx.quadraticCurveTo(
+          x + length * 0.52 + offsetX,
+          y + bend + offsetY,
+          x + length + offsetX,
+          y + bend * 0.35 + offsetY,
+        );
+        ctx.stroke();
+      }
+    }
+  }
+
+  for (let glint = 0; glint < 24; glint += 1) {
+    const x = random() * size;
+    const y = random() * size;
+    const gradient = ctx.createLinearGradient(x, y, x + 24, y);
+    gradient.addColorStop(0, 'rgba(230, 246, 221, 0)');
+    gradient.addColorStop(0.5, `rgba(230, 246, 221, ${0.12 + random() * 0.2})`);
+    gradient.addColorStop(1, 'rgba(230, 246, 221, 0)');
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 1 + random() * 2;
+    const offsetYChange = (random() - 0.5) * 2;
+    for (const offsetY of wrapOffsets) {
+      for (const offsetX of wrapOffsets) {
+        ctx.beginPath();
+        ctx.moveTo(x + offsetX, y + offsetY);
+        ctx.lineTo(x + 24 + offsetX, y + offsetYChange + offsetY);
+        ctx.stroke();
+      }
+    }
+  }
+
+  const texture = canvasTexture(canvas, { anisotropy: 2 });
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+export function createWaterEnvironmentMap(): THREE.CubeTexture {
+  const faces: HTMLCanvasElement[] = [];
+  const random = seeded(0x71a4c2);
+
+  for (let face = 0; face < 6; face += 1) {
+    const { canvas, ctx } = makeCanvas(64, 64);
+    const sky = ctx.createLinearGradient(0, 0, 0, 64);
+    sky.addColorStop(0, '#647a9b');
+    sky.addColorStop(0.52, '#d98e76');
+    sky.addColorStop(0.68, '#f3bb76');
+    sky.addColorStop(0.72, '#657852');
+    sky.addColorStop(1, '#244c43');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 64, 64);
+
+    if (face !== 2 && face !== 3) {
+      for (let tree = 0; tree < 9; tree += 1) {
+        const x = random() * 76 - 6;
+        const y = 42 + random() * 17;
+        const radius = 4 + random() * 9;
+        ctx.fillStyle = `rgba(27, ${55 + Math.floor(random() * 25)}, 39, 0.7)`;
+        ctx.beginPath();
+        ctx.ellipse(x, y, radius, radius * 0.72, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    faces.push(canvas);
+  }
+
+  const environment = new THREE.CubeTexture(faces);
+  environment.colorSpace = THREE.SRGBColorSpace;
+  environment.mapping = THREE.CubeReflectionMapping;
+  environment.needsUpdate = true;
+  return environment;
+}
+
 const SIGN_LABELS = [
   ['KIRANA', 'STORE'],
   ['SHARMA', 'GENERAL STORE'],
@@ -535,6 +804,183 @@ export function createCloudTexture(): THREE.CanvasTexture {
   return canvasTexture(canvas, { clamp: true, anisotropy: 1 });
 }
 
+export function createBisleriLabelTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(512, 256);
+
+  const background = ctx.createLinearGradient(0, 0, 0, 256);
+  background.addColorStop(0, '#f7fdf9');
+  background.addColorStop(0.62, '#eef9f2');
+  background.addColorStop(1, '#dff2e6');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, 512, 256);
+
+  ctx.fillStyle = '#1f7a43';
+  ctx.fillRect(0, 0, 512, 26);
+  ctx.fillStyle = '#1b74c9';
+  ctx.fillRect(0, 26, 512, 8);
+
+  ctx.fillStyle = 'rgba(31, 122, 67, 0.12)';
+  ctx.beginPath();
+  ctx.moveTo(0, 206);
+  ctx.bezierCurveTo(140, 170, 300, 244, 512, 190);
+  ctx.lineTo(512, 256);
+  ctx.lineTo(0, 256);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(27, 116, 201, 0.16)';
+  ctx.beginPath();
+  ctx.moveTo(0, 232);
+  ctx.bezierCurveTo(170, 204, 330, 262, 512, 222);
+  ctx.lineTo(512, 256);
+  ctx.lineTo(0, 256);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#0f7d3f';
+  ctx.font = '900 96px "Arial Black", "Arial Narrow", sans-serif';
+  ctx.fillText('Bisleri', 256, 118);
+
+  ctx.fillStyle = '#1b74c9';
+  ctx.font = '700 26px "Segoe UI", Arial, sans-serif';
+  ctx.fillText('PACKAGED DRINKING WATER', 256, 184);
+
+  ctx.fillStyle = 'rgba(15, 125, 63, 0.18)';
+  for (let drop = 0; drop < 26; drop += 1) {
+    const x = (drop * 89) % 512;
+    const y = 46 + ((drop * 53) % 28);
+    ctx.beginPath();
+    ctx.arc(x, y, 2 + (drop % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return canvasTexture(canvas, { clamp: true, anisotropy: 4 });
+}
+
+export function createCocaColaLabelTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(512, 256);
+
+  const background = ctx.createLinearGradient(0, 0, 0, 256);
+  background.addColorStop(0, '#f01528');
+  background.addColorStop(0.5, '#d40018');
+  background.addColorStop(1, '#a80012');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, 512, 256);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.beginPath();
+  ctx.moveTo(0, 168);
+  ctx.bezierCurveTo(150, 128, 340, 200, 512, 146);
+  ctx.lineTo(512, 256);
+  ctx.lineTo(0, 256);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(0, 214);
+  ctx.bezierCurveTo(160, 178, 330, 238, 512, 196);
+  ctx.lineTo(512, 256);
+  ctx.lineTo(0, 256);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.font =
+    'italic 900 92px "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive';
+  ctx.fillText('Coca-Cola', 256, 104);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.font = '700 22px "Segoe UI", Arial, sans-serif';
+  ctx.fillText('ORIGINAL TASTE', 256, 156);
+
+  ctx.fillStyle = 'rgba(90, 0, 8, 0.18)';
+  ctx.fillRect(0, 0, 512, 14);
+  ctx.fillRect(0, 242, 512, 14);
+
+  return canvasTexture(canvas, { clamp: true, anisotropy: 4 });
+}
+
+export function createChipsWrapperTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(512, 512);
+  const random = seeded(0x5eedc4);
+
+  const background = ctx.createLinearGradient(0, 0, 512, 512);
+  background.addColorStop(0, '#ffd21f');
+  background.addColorStop(0.45, '#ff9d1f');
+  background.addColorStop(1, '#f24d1f');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, 512, 512);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  for (let i = 0; i < 26; i += 1) {
+    const x = random() * 512;
+    const y = random() * 512;
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + random() * 12, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#0f6f5c';
+  ctx.beginPath();
+  ctx.moveTo(0, 92);
+  ctx.quadraticCurveTo(256, 40, 512, 96);
+  ctx.lineTo(512, 148);
+  ctx.quadraticCurveTo(256, 100, 0, 150);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff8e6';
+  ctx.font = '900 62px "Arial Black", "Arial Narrow", sans-serif';
+  ctx.fillText('CRUNCHY', 256, 78);
+
+  ctx.fillStyle = '#b51d12';
+  ctx.font = '900 88px "Arial Black", "Arial Narrow", sans-serif';
+  ctx.fillText('MASALA', 256, 214);
+  ctx.fillStyle = '#3a1908';
+  ctx.font = '900 74px "Arial Black", "Arial Narrow", sans-serif';
+  ctx.fillText('CHIPS', 256, 292);
+
+  const chipColors = ['#f6cf63', '#eab545', '#f0c256'];
+  for (let chip = 0; chip < 22; chip += 1) {
+    const x = 40 + random() * 432;
+    const y = 356 + random() * 128;
+    const radius = 12 + random() * 20;
+    ctx.fillStyle = chipColors[chip % chipColors.length];
+    ctx.beginPath();
+    ctx.ellipse(
+      x,
+      y,
+      radius,
+      radius * 0.62,
+      random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(150, 86, 20, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.font = '700 20px "Segoe UI", Arial, sans-serif';
+  ctx.fillText('POTATO CHIPS', 256, 330);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.fillRect(0, 0, 512, 10);
+  ctx.fillStyle = 'rgba(70, 24, 0, 0.22)';
+  ctx.fillRect(0, 502, 512, 10);
+
+  return canvasTexture(canvas, { clamp: true, anisotropy: 4 });
+}
+
 export function createRoadTexture(): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(512, 1024);
   const random = seeded(0x0ad5eed);
@@ -599,13 +1045,13 @@ function roundedRect(
 export function createGateGlowTexture(): THREE.CanvasTexture {
   if (gateGlowTexture) return gateGlowTexture;
 
-  const width = 768;
-  const height = 480;
+  const width = 960;
+  const height = 540;
   const { canvas, ctx } = makeCanvas(width, height);
   ctx.shadowColor = '#ffffff';
-  ctx.shadowBlur = 44;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
-  roundedRect(ctx, 52, 38, width - 104, height - 76, 30);
+  ctx.shadowBlur = 40;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.68)';
+  roundedRect(ctx, 56, 34, width - 112, height - 68, 44);
   ctx.fill();
 
   gateGlowTexture = canvasTexture(canvas, { clamp: true });
@@ -617,75 +1063,132 @@ export function createGateTexture(spec: GateSpec): THREE.CanvasTexture {
   const cached = gateTextureCache.get(cacheKey);
   if (cached) return cached;
 
-  const width = 768;
-  const height = 480;
+  const width = 960;
+  const height = 540;
   const { canvas, ctx } = makeCanvas(width, height);
 
-  roundedRect(ctx, 5, 5, width - 10, height - 10, 34);
+  roundedRect(ctx, 8, 8, width - 16, height - 16, 44);
   ctx.save();
   ctx.clip();
 
   const background = ctx.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, 'rgba(29, 43, 52, 0.93)');
-  background.addColorStop(0.55, 'rgba(16, 27, 35, 0.91)');
-  background.addColorStop(1, 'rgba(9, 17, 24, 0.94)');
+  background.addColorStop(0, '#16293a');
+  background.addColorStop(0.56, '#0b1a27');
+  background.addColorStop(1, '#07101a');
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  const colorBloom = ctx.createRadialGradient(
+  const screen = ctx.createLinearGradient(0, 40, 0, height - 40);
+  screen.addColorStop(0, '#0c2030');
+  screen.addColorStop(0.6, '#091824');
+  screen.addColorStop(1, '#060f18');
+  ctx.fillStyle = screen;
+  roundedRect(ctx, 40, 40, width - 80, height - 80, 34);
+  ctx.fill();
+
+  const sheen = ctx.createLinearGradient(0, 0, width * 0.8, height * 0.7);
+  sheen.addColorStop(0, 'rgba(198, 226, 235, 0.09)');
+  sheen.addColorStop(0.4, 'rgba(198, 226, 235, 0.025)');
+  sheen.addColorStop(1, 'rgba(198, 226, 235, 0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, width, height);
+
+  const colorWash = ctx.createRadialGradient(
     width / 2,
-    height / 2,
-    12,
+    height * 0.58,
+    20,
     width / 2,
-    height / 2,
-    width * 0.62,
+    height * 0.58,
+    width * 0.56,
   );
-  colorBloom.addColorStop(0, spec.color);
-  colorBloom.addColorStop(0.35, spec.color);
-  colorBloom.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.globalAlpha = 0.28;
-  ctx.fillStyle = colorBloom;
+  colorWash.addColorStop(0, spec.color);
+  colorWash.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = colorWash;
   ctx.fillRect(0, 0, width, height);
   ctx.globalAlpha = 1;
-
-  const reflection = ctx.createLinearGradient(0, 0, width * 0.85, height * 0.6);
-  reflection.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-  reflection.addColorStop(0.42, 'rgba(255, 255, 255, 0.035)');
-  reflection.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  ctx.fillStyle = reflection;
-  ctx.fillRect(0, 0, width, height);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#f6fff9';
-  ctx.shadowColor = spec.color;
-  ctx.shadowBlur = 38;
-  let fontSize = 190;
-  ctx.font = `800 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+
+  ctx.fillStyle = 'rgba(196, 220, 226, 0.58)';
+  ctx.font = '600 27px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('R I V E R   C H E C K P O I N T', width / 2, 76);
+
+  ctx.strokeStyle = 'rgba(198, 226, 235, 0.16)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(width * 0.22, 116);
+  ctx.lineTo(width * 0.78, 116);
+  ctx.stroke();
+
   const value = `${spec.symbol}${spec.value}`;
-  while (ctx.measureText(value).width > width - 150 && fontSize > 120) {
+  let fontSize = 262;
+  ctx.font = `800 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  while (ctx.measureText(value).width > width - 210 && fontSize > 150) {
     fontSize -= 8;
     ctx.font = `800 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
   }
-  ctx.fillText(value, width / 2, height / 2);
+  ctx.fillStyle = '#f4fffb';
+  ctx.shadowColor = spec.color;
+  ctx.shadowBlur = 24;
+  ctx.fillText(value, width / 2, height * 0.54);
   ctx.shadowBlur = 0;
 
-  ctx.restore();
-  roundedRect(ctx, 5, 5, width - 10, height - 10, 34);
+  ctx.fillStyle = '#e4f1f3';
+  ctx.font = '700 56px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(spec.label, width / 2, height * 0.835);
+
   ctx.strokeStyle = spec.color;
-  ctx.globalAlpha = 0.82;
-  ctx.lineWidth = 6;
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(width * 0.42, height * 0.905);
+  ctx.lineTo(width * 0.58, height * 0.905);
   ctx.stroke();
-  roundedRect(ctx, 12, 12, width - 24, height - 24, 30);
-  ctx.strokeStyle = spec.color;
-  ctx.globalAlpha = 0.3;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  roundedRect(ctx, 15, 15, width - 30, height - 30, 28);
-  ctx.strokeStyle = 'rgba(226, 241, 245, 0.22)';
   ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  roundedRect(ctx, 8, 8, width - 16, height - 16, 44);
+  ctx.shadowColor = spec.color;
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = spec.color;
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 7;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  roundedRect(ctx, 20, 20, width - 40, height - 40, 36);
+  ctx.strokeStyle = 'rgba(222, 240, 244, 0.2)';
   ctx.lineWidth = 2;
   ctx.stroke();
+
+  roundedRect(ctx, 25, 25, width - 50, height - 50, 32);
+  ctx.strokeStyle = spec.color;
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  const bracket = 30;
+  const inset = 34;
+  ctx.strokeStyle = 'rgba(214, 233, 238, 0.42)';
+  ctx.lineWidth = 3;
+  for (const corner of [
+    [inset, inset, 1, 1],
+    [width - inset, inset, -1, 1],
+    [inset, height - inset, 1, -1],
+    [width - inset, height - inset, -1, -1],
+  ] as const) {
+    const [x, y, dx, dy] = corner;
+    ctx.beginPath();
+    ctx.moveTo(x + dx * bracket, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + dy * bracket);
+    ctx.stroke();
+  }
 
   const texture = canvasTexture(canvas, { clamp: true, anisotropy: 8 });
   gateTextureCache.set(cacheKey, texture);

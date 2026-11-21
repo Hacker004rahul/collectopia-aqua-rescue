@@ -9,7 +9,8 @@
  *  - Run distance between successive ads is ADVERTISING.gapMin..gapMax.
  *  - Ads recycle ADVERTISING.recycleBehind metres after they pass the player.
  *  - Never placed within ADVERTISING.gateExclusion metres of a known gate z.
- *  - Gantries are limited to one every ADVERTISING.gantryMinGap metres.
+ *  - Gantry-style billboards are limited to one every
+ *    ADVERTISING.gantryMinGap metres.
  *
  * Zone weights
  *  Each zone type specifies a probability table for which ad formats appear.
@@ -234,8 +235,8 @@ export class AdSystem {
     const xOffset = AD_SIDE_OFFSET[format];
 
     if (format === 'gantry') {
-      // Built facing +Z, toward the approaching player, and centred over road.
-      group.position.set(0, 0, -distance);
+      group.rotation.y = adRoadsideYaw(side);
+      group.position.set(side * xOffset, 0, -distance);
     } else {
       // Panels are built facing +Z. Rotate inward toward the road and lean
       // toward the approaching player by AD_PLAYER_FACING_LEAN radians.

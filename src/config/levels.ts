@@ -19,7 +19,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 0,
     name: 'Level 1',
-    zone: 'Residential Street',
+    zone: 'Riverside Stretch',
     zoneId: 'residential',
     length: LEVEL_LENGTH,
     speed: 16.5,
@@ -27,7 +27,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 1,
     name: 'Level 2',
-    zone: 'Market Street',
+    zone: 'Riverside Market',
     zoneId: 'market',
     length: LEVEL_LENGTH,
     speed: 17.2,
@@ -35,7 +35,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 2,
     name: 'Level 3',
-    zone: 'Construction Zone',
+    zone: 'Bridge Works',
     zoneId: 'construction',
     length: LEVEL_LENGTH,
     speed: 17.9,
@@ -43,7 +43,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 3,
     name: 'Level 4',
-    zone: 'Temple Street',
+    zone: 'Temple Ghat',
     zoneId: 'temple',
     length: LEVEL_LENGTH,
     speed: 18.6,
@@ -51,7 +51,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 4,
     name: 'Level 5',
-    zone: 'Festival Street',
+    zone: 'Festival Riverfront',
     zoneId: 'festival',
     length: LEVEL_LENGTH,
     speed: 19.4,
@@ -59,7 +59,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 5,
     name: 'Level 6',
-    zone: 'Traffic Crossing',
+    zone: 'River Crossing',
     zoneId: 'traffic',
     length: LEVEL_LENGTH,
     speed: 20.2,
@@ -67,7 +67,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 6,
     name: 'Level 7',
-    zone: 'Town Outskirts',
+    zone: 'Open Riverside',
     zoneId: 'outskirts',
     length: LEVEL_LENGTH,
     speed: 21.1,
@@ -75,7 +75,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 7,
     name: 'Level 8',
-    zone: 'Advanced Residential',
+    zone: 'Upper Riverbank',
     zoneId: 'residential',
     length: LEVEL_LENGTH,
     speed: 22,
@@ -83,7 +83,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 8,
     name: 'Level 9',
-    zone: 'Mega Obstacle Street',
+    zone: 'Rough Water Bend',
     zoneId: 'construction',
     length: LEVEL_LENGTH,
     speed: 23,
@@ -91,7 +91,7 @@ export const LEVELS: readonly LevelDefinition[] = [
   {
     index: 9,
     name: 'Level 10',
-    zone: 'Ultimate Collectopia',
+    zone: 'Aqua Rescue Finale',
     zoneId: 'festival',
     length: LEVEL_LENGTH,
     speed: 24,

@@ -43,33 +43,33 @@ export interface ZoneTheme {
 export const ZONES: Record<ZoneId, ZoneTheme> = {
   residential: {
     id: 'residential',
-    name: 'Residential Street',
+    name: 'Riverside Stretch',
     sky: {
-      top: 0x3c7fcb,
-      bottom: 0xffd5a0,
-      background: 0xbfd9ef,
-      fog: 0xeed7b8,
-      fogNear: 64,
-      fogFar: 205,
-      sunGlow: 0xffe8b0,
+      top: 0x50749a,
+      bottom: 0xffcb98,
+      background: 0xb9c4cb,
+      fog: 0xdfcbb0,
+      fogNear: 72,
+      fogFar: 220,
+      sunGlow: 0xffd9a8,
     },
     light: {
-      hemisphereSky: 0xd0e5ff,
-      hemisphereGround: 0x8b7456,
-      hemisphereIntensity: 1.14,
-      sunColor: 0xffe8c2,
-      sunIntensity: 2.32,
+      hemisphereSky: 0xc6d8e6,
+      hemisphereGround: 0x7f6b4d,
+      hemisphereIntensity: 1.12,
+      sunColor: 0xffd4a0,
+      sunIntensity: 2.38,
     },
     dressing: {
       shopChance: 0.34,
-      treeCount: [2, 3],
+      treeCount: [3, 4],
       vehicleCount: [1, 2],
       stallCount: [0, 1],
     },
   },
   market: {
     id: 'market',
-    name: 'Market Street',
+    name: 'Riverside Market',
     sky: {
       top: 0x4388cf,
       bottom: 0xffd79f,
@@ -95,7 +95,7 @@ export const ZONES: Record<ZoneId, ZoneTheme> = {
   },
   construction: {
     id: 'construction',
-    name: 'Construction Zone',
+    name: 'Bridge Works',
     sky: {
       top: 0x6e9dc9,
       bottom: 0xf3dcc0,
@@ -121,7 +121,7 @@ export const ZONES: Record<ZoneId, ZoneTheme> = {
   },
   temple: {
     id: 'temple',
-    name: 'Temple Street',
+    name: 'Temple Ghat',
     sky: {
       top: 0x3a78c4,
       bottom: 0xffc98e,
@@ -147,7 +147,7 @@ export const ZONES: Record<ZoneId, ZoneTheme> = {
   },
   festival: {
     id: 'festival',
-    name: 'Festival Street',
+    name: 'Festival Riverfront',
     sky: {
       top: 0x2d3f7e,
       bottom: 0xf0a06a,
@@ -173,7 +173,7 @@ export const ZONES: Record<ZoneId, ZoneTheme> = {
   },
   traffic: {
     id: 'traffic',
-    name: 'Traffic Crossing',
+    name: 'River Crossing',
     sky: {
       top: 0x4a8fd4,
       bottom: 0xffe0b0,
@@ -199,7 +199,7 @@ export const ZONES: Record<ZoneId, ZoneTheme> = {
   },
   outskirts: {
     id: 'outskirts',
-    name: 'Town Outskirts',
+    name: 'Open Riverside',
     sky: {
       top: 0x5a9bd8,
       bottom: 0xffe3b6,

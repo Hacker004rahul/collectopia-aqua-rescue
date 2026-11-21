@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as THREE from 'three';
 import { EconomyManager } from '../src/economy/EconomyManager';
 import { validatePattern } from '../src/obstacles/ObstacleSystem';
-import { OBSTACLE_HALF_EXTENTS } from '../src/obstacles/ObstacleMeshBuilder';
+import {
+  buildObstacleMesh,
+  OBSTACLE_HALF_EXTENTS,
+  OBSTACLE_VISUAL_BY_KIND,
+} from '../src/obstacles/ObstacleMeshBuilder';
 import { OBSTACLES, PLAYER, LANES } from '../src/config/balance';
 
 // ─── validatePattern (fairness validator) ─────────────────────────────────────
@@ -95,6 +100,43 @@ describe('OBSTACLE_HALF_EXTENTS', () => {
       expect(v.x, `${kind}.x`).toBeGreaterThan(0);
       expect(v.z, `${kind}.z`).toBeGreaterThan(0);
     }
+  });
+
+  describe('river obstacle models', () => {
+    it('covers logs, rocks, barrels and tangled debris without tire obstacles', () => {
+      expect(new Set(Object.values(OBSTACLE_VISUAL_BY_KIND))).toEqual(
+        new Set([
+          'floating-log',
+          'submerged-rock',
+          'rusty-barrel',
+          'tangled-debris',
+        ]),
+      );
+
+      const representatives = [
+        ['wall-concrete', 'floating-log'],
+        ['wall-brick', 'submerged-rock'],
+        ['wall-moving', 'rusty-barrel'],
+        ['crate', 'submerged-rock'],
+        ['wall-breakable', 'tangled-debris'],
+      ] as const;
+      for (const [kind, visual] of representatives) {
+        const group = buildObstacleMesh(kind);
+        expect(group.userData.obstacleVisual).toBe(visual);
+        expect(group.getObjectByName('obstacleWaterRipple')).toBeDefined();
+        const geometries = new Set<THREE.BufferGeometry>();
+        let meshCount = 0;
+        group.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          if (mesh.isMesh) {
+            meshCount += 1;
+            geometries.add(mesh.geometry);
+          }
+        });
+        expect(meshCount).toBeGreaterThan(2);
+        geometries.forEach((geometry) => geometry.dispose());
+      }
+    });
   });
 
   it('wall half-extents are narrower than a lane so steer-around is possible', () => {

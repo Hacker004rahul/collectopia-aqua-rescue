@@ -6,7 +6,7 @@
  *  - Validate every pattern for fairness (>=1 safe lane, reaction distance).
  *  - Detect AABB collisions with the player footprint.
  *  - End the run on the first unblocked collision.
- *  - Support Shield (one blocked hit) and Super Punch (breakable walls).
+ *  - Support Shield (one blocked hit) and Super Punch (breakable debris).
  *  - Scale density and pattern complexity with the difficulty profile.
  *  - Coordinate spawns with gates, enemies and power-ups.
  *  - Animate moving walls and recycle objects behind the player.
@@ -155,10 +155,23 @@ export class ObstacleSystem {
         continue;
       }
 
-      // animate moving walls
+      // Floating movement and lateral barrel drift share the encounter pattern.
       if (rec.moveAmplitude > 0) {
         rec.x = LX[1] + Math.sin(this.time * 1.4 + rec.movePhase) * rec.moveAmplitude;
         rec.group.position.x = rec.x;
+      }
+      const floatPhase = this.time * 2.3 + rec.movePhase;
+      rec.group.position.y = 0.02 + Math.sin(floatPhase) * 0.035;
+      rec.group.rotation.x = Math.cos(floatPhase * 0.8) * 0.025;
+      rec.group.rotation.z = Math.sin(floatPhase) * 0.035;
+      rec.group.rotation.y = Math.sin(floatPhase * 0.52) * 0.08;
+      const ripple = rec.group.getObjectByName(
+        'obstacleWaterRipple',
+      ) as THREE.Mesh | undefined;
+      if (ripple) {
+        const rippleMaterial = ripple.material as THREE.MeshBasicMaterial;
+        ripple.scale.setScalar(1 + Math.sin(floatPhase * 0.7) * 0.06);
+        rippleMaterial.opacity = 0.19 + (Math.sin(floatPhase * 0.7) + 1) * 0.08;
       }
 
       // broken walls have no collision
@@ -195,7 +208,7 @@ export class ObstacleSystem {
         rec.broken = true;
         rec.group.visible = false;
         this.callbacks.onHit({
-          position: new THREE.Vector3(rec.x, 1.2, obsZ),
+          position: new THREE.Vector3(rec.x, 0.22, obsZ),
           shieldBlocked: true,
           fatal: false,
           kind: rec.kind,
@@ -207,7 +220,7 @@ export class ObstacleSystem {
       this.runEnded = true;
       this.fatalObstacleId = rec.id;
       this.callbacks.onHit({
-        position: new THREE.Vector3(rec.x, 1.2, obsZ),
+        position: new THREE.Vector3(rec.x, 0.22, obsZ),
         shieldBlocked: false,
         fatal: true,
         kind: rec.kind,
@@ -408,7 +421,7 @@ export class ObstacleSystem {
       halfX: half.x,
       halfZ: half.z,
       movePhase: this.rng.range(0, Math.PI * 2),
-      moveAmplitude: kind === 'wall-moving' ? ROAD.laneWidth * 0.72 : 0,
+      moveAmplitude: kind === 'wall-moving' ? ROAD.laneWidth * 0.38 : 0,
       broken: false,
       active: true,
     });
@@ -419,7 +432,7 @@ export class ObstacleSystem {
     rec.broken = true;
     rec.group.visible = false;
     this.callbacks.onBreak?.({
-      position: new THREE.Vector3(rec.x, 1.2, obsZ),
+      position: new THREE.Vector3(rec.x, 0.22, obsZ),
       kind: rec.kind,
     });
   }
@@ -453,9 +466,11 @@ export function validatePattern(pattern: Pattern): boolean {
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function disposeGroup(group: THREE.Group): void {
+  const geometries = new Set<THREE.BufferGeometry>();
   group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh) mesh.geometry.dispose();
+    if (mesh.isMesh) geometries.add(mesh.geometry);
     // materials are shared across instances — never dispose here
   });
+  geometries.forEach((geometry) => geometry.dispose());
 }

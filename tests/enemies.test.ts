@@ -8,11 +8,13 @@
  * tiny mock, keeping the suite fast.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as THREE from 'three';
 import { EconomyManager } from '../src/economy/EconomyManager';
 import { ENEMIES, PUNCH, LANES } from '../src/config/balance';
 import { ENEMY_HALF_EXTENTS, ENEMY_MAX_HP } from '../src/enemies/EnemyMeshBuilder';
-import { isEnemyInPunchRange } from '../src/enemies/EnemySystem';
+import { EnemySystem, isEnemyInPunchRange } from '../src/enemies/EnemySystem';
 import { PunchSystem } from '../src/enemies/PunchSystem';
+import { getDifficultyProfile } from '../src/config/difficulty';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,72 @@ describe('ENEMY_MAX_HP', () => {
   it('basic and fast enemies have 1 HP', () => {
     expect(ENEMY_MAX_HP.basic).toBe(1);
     expect(ENEMY_MAX_HP.fast).toBe(1);
+  });
+
+  describe('EnemySystem crocodile attack state', () => {
+    it('uses a telegraphed attack and applies no more than one hit per lunge', () => {
+      const scene = new THREE.Scene();
+      const economy = new EconomyManager(200);
+      const onPlayerHit = vi.fn();
+      const onEnemyDefeated = vi.fn();
+      const difficulty = getDifficultyProfile(0);
+      difficulty.enemy.maxActive = 1;
+      difficulty.enemy.minSpacing = 1000;
+      difficulty.enemy.maxSpacing = 1000;
+      difficulty.enemy.kindWeights = {
+        basic: 1,
+        fast: 0,
+        guard: 0,
+        heavy: 0,
+        boss: 0,
+      };
+      const enemies = new EnemySystem(scene, economy, {
+        onPlayerHit,
+        onEnemyDefeated,
+      });
+      const observedStates = new Set<string>();
+
+      enemies.update(0, 0, 0, 0, 16, difficulty);
+      expect(enemies.getActiveRecords()[0]?.state).toBe('spawning');
+
+      let playerDistance = 0;
+      for (let frame = 0; frame < 300 && onPlayerHit.mock.calls.length === 0; frame += 1) {
+        playerDistance += 0.8;
+        const enemy = enemies.getActiveRecords()[0];
+        enemies.update(
+          -playerDistance,
+          enemy?.x ?? 0,
+          playerDistance,
+          0.05,
+          16,
+          difficulty,
+        );
+        enemies.getActiveRecords().forEach((active) => observedStates.add(active.state));
+      }
+
+      expect(observedStates).toContain('swimming');
+      expect(observedStates).toContain('approaching');
+      expect(observedStates).toContain('attacking');
+      expect(onPlayerHit).toHaveBeenCalledOnce();
+      expect(onPlayerHit.mock.calls[0][0].shieldBlocked).toBe(false);
+      expect(economy.balance).toBe(200 - ENEMIES.damagePenalty);
+
+      for (let frame = 0; frame < 30; frame += 1) {
+        playerDistance += 0.8;
+        const enemy = enemies.getActiveRecords()[0];
+        enemies.update(
+          -playerDistance,
+          enemy?.x ?? 0,
+          playerDistance,
+          0.05,
+          16,
+          difficulty,
+        );
+      }
+
+      expect(onPlayerHit).toHaveBeenCalledOnce();
+      enemies.dispose();
+    });
   });
 
   it('guard has 1 HP', () => {

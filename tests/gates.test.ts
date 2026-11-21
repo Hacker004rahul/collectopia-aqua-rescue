@@ -9,6 +9,7 @@ import {
   selectGatePair,
 } from '../src/economy/gateMath';
 import { GATE_BIAS } from '../src/config/balance';
+import { boatFitsGateOpening } from '../src/gates/Gate';
 
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -73,6 +74,22 @@ describe('gate math', () => {
         'divide:4',
       ]),
     );
+  });
+});
+
+describe('gate passage clearance', () => {
+  it('requires the full boat bounds to fit inside one gate opening', () => {
+    expect(boatFitsGateOpening(-2.7, -2.7, 1.02, 1.53)).toBe(true);
+    expect(boatFitsGateOpening(2.7, 2.7, 1.02, 1.53)).toBe(true);
+    expect(boatFitsGateOpening(-2.2, -2.7, 1.02, 1.53)).toBe(true);
+    expect(boatFitsGateOpening(-2.17, -2.7, 1.02, 1.53)).toBe(false);
+    expect(boatFitsGateOpening(0, -2.7, 1.02, 1.53)).toBe(false);
+  });
+
+  it('rejects invalid positions and bounds', () => {
+    expect(boatFitsGateOpening(Number.NaN, 0, 1.02, 1.53)).toBe(false);
+    expect(boatFitsGateOpening(0, 0, -1, 1.53)).toBe(false);
+    expect(boatFitsGateOpening(0, 0, 1.02, Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
 

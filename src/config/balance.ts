@@ -11,9 +11,8 @@ export const ROAD = {
 export const PLAYER = {
   forwardSpeed: 16.5,
   laneSmoothing: 13,
-  runCycleSpeed: 10.5,
-  collisionHalfWidth: 0.78,
-  collisionHalfDepth: 0.9,
+  collisionHalfWidth: 1.02,
+  collisionHalfDepth: 1.55,
 } as const;
 
 export const ECONOMY = {
@@ -24,15 +23,15 @@ export const ECONOMY = {
 
 export const COINS = {
   radius: 0.42,
-  height: 1.16,
+  height: 0.22,
   spacing: 2.3,
   patternsAhead: 170,
   patternGapMin: 13,
   patternGapMax: 19,
   initialPatternDistance: 20,
   maxActive: 120,
-  collectRadiusX: 0.82,
-  collectRadiusZ: 1.05,
+  collectRadiusX: 1.2,
+  collectRadiusZ: 1.45,
   recycleBehind: 16,
 } as const;
 
@@ -101,8 +100,22 @@ export const ENEMIES = {
   laneChangeSpeed: 2.6,
   /** Coin penalty when an enemy successfully hits the player. */
   damagePenalty: 50,
-  /** Cooldown between successive enemy-hit penalties from the same enemy (s). */
+  /** Cooldown between crocodile attacks so one cannot chain unavoidable bites. */
   hitCooldown: 1.8,
+  /** Crocodiles begin lining up a lunge at this distance from the boat (m). */
+  attackTriggerDistance: 14,
+  /** Crocodile bite animation duration (s). */
+  attackDuration: 0.7,
+  /** Only the final portion of a lunge can connect. */
+  attackDamageWindow: 0.28,
+  /** Extra forward speed during the lunge (m/s). */
+  attackLungeSpeed: 7,
+  /** Distance at which a crocodile begins actively tracking the player's lane. */
+  chaseDistance: 22,
+  /** Distance at which a crocodile starts steering toward the player's lane. */
+  approachDistance: 42,
+  /** Duration of the post-hit stun (s). */
+  stunDuration: 0.65,
   /** Reward for defeating a basic enemy. */
   rewardBasic: 30,
   /** Reward for defeating a fast enemy. */
@@ -136,6 +149,12 @@ export const PUNCH = {
   rangeX: 3.2,
   /** Duration of the player punch animation (s). */
   animDuration: 0.28,
+} as const;
+
+export const GARBAGE_CATCH = {
+  cooldown: 0.85,
+  rangeX: 1.8,
+  rangeZ: 4.2,
 } as const;
 
 export const ADVERTISING = {
